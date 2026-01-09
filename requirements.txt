@@ -1,0 +1,7 @@
+# Core dependencies
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Build dependencies (for creating Windows installer)
+pyinstaller>=6.0.0

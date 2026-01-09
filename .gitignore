@@ -6,3 +6,18 @@ __pycache__/
 *.pyd
 .Python
 *.log
+
+# Build artifacts
+build/
+dist/
+*.spec.backup
+*.wixobj
+*.wixpdb
+*.msi
+*.exe
+HarvestedFiles.wxs
+
+# Virtual environment
+.venv/
+venv/
+env/

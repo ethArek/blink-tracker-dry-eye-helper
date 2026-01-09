@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WiX Toolset configuration for Dry Eye Blink Detector MSI installer.
+  
+  This file defines the MSI installer structure, including:
+  - Application files and folder structure
+  - Start Menu shortcuts
+  - Desktop shortcut (optional)
+  - Registry entries for Add/Remove Programs
+  - Uninstall support
+  
+  Prerequisites:
+  - WiX Toolset 3.x or 4.x installed
+  - PyInstaller build completed (dist/DryEyeBlinkDetector folder exists)
+  
+  To build the MSI:
+    python build_msi.py
+  
+  Or manually:
+    candle.exe DryEyeBlinkDetector.wxs
+    light.exe -ext WixUIExtension -out DryEyeBlinkDetectorSetup.msi DryEyeBlinkDetector.wixobj
+-->
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <!-- Product definition -->
+  <Product Id="*" 
+           Name="Dry Eye Blink Detector" 
+           Language="1033" 
+           Version="1.0.0.0" 
+           Manufacturer="Dry Eye Blink Project" 
+           UpgradeCode="12345678-1234-1234-1234-123456789012">
+    
+    <!-- Package information -->
+    <Package InstallerVersion="200" 
+             Compressed="yes" 
+             InstallScope="perMachine" 
+             Description="Dry Eye Blink Detector - Webcam-based blink monitoring application"
+             Comments="Monitors your blink rate to help prevent dry eyes" />
+
+    <!-- Media for installation files -->
+    <Media Id="1" Cabinet="DryEyeBlinkDetector.cab" EmbedCab="yes" />
+
+    <!-- Major upgrade support (allows newer versions to replace older ones) -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <!-- Installation directory structure -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <!-- Program Files directory -->
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="DryEyeBlinkDetector" />
+      </Directory>
+      
+      <!-- Start Menu Programs folder -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Dry Eye Blink Detector"/>
+      </Directory>
+      
+      <!-- Desktop folder for optional desktop shortcut -->
+      <Directory Id="DesktopFolder" Name="Desktop"/>
+    </Directory>
+
+    <!-- Feature: Main application -->
+    <Feature Id="MainApplication" Title="Dry Eye Blink Detector" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="ApplicationShortcutDesktop" />
+    </Feature>
+
+    <!-- UI Configuration -->
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <!-- License agreement (optional - remove if you don't have a license file) -->
+    <!-- <WixVariable Id="WixUILicenseRtf" Value="License.rtf" /> -->
+  </Product>
+
+  <!-- Component group: All application files -->
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <!-- Main executable -->
+      <Component Id="MainExecutable" Guid="*">
+        <File Id="DryEyeBlinkDetectorEXE" 
+              Source="dist\DryEyeBlinkDetector\DryEyeBlinkDetector.exe" 
+              KeyPath="yes" />
+      </Component>
+      
+      <!-- All other files in dist/DryEyeBlinkDetector -->
+      <!-- Note: You'll need to add all files here, or use heat.exe to auto-generate -->
+      <!-- For now, this is a template. Use heat.exe or build_msi.py to generate the full list -->
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- Start Menu shortcut -->
+  <Fragment>
+    <Component Id="ApplicationShortcut" 
+               Directory="ApplicationProgramsFolder" 
+               Guid="12345678-1234-1234-1234-123456789013">
+      <Shortcut Id="ApplicationStartMenuShortcut"
+                Name="Dry Eye Blink Detector"
+                Description="Monitor your blink rate to prevent dry eyes"
+                Target="[INSTALLFOLDER]DryEyeBlinkDetector.exe"
+                WorkingDirectory="INSTALLFOLDER"/>
+      <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall"/>
+      <RegistryValue Root="HKCU" 
+                     Key="Software\DryEyeBlinkDetector" 
+                     Name="installed" 
+                     Type="integer" 
+                     Value="1" 
+                     KeyPath="yes"/>
+    </Component>
+  </Fragment>
+
+  <!-- Desktop shortcut (optional) -->
+  <Fragment>
+    <Component Id="ApplicationShortcutDesktop" 
+               Directory="DesktopFolder" 
+               Guid="12345678-1234-1234-1234-123456789014">
+      <Shortcut Id="ApplicationDesktopShortcut"
+                Name="Dry Eye Blink Detector"
+                Description="Monitor your blink rate to prevent dry eyes"
+                Target="[INSTALLFOLDER]DryEyeBlinkDetector.exe"
+                WorkingDirectory="INSTALLFOLDER"/>
+      <RegistryValue Root="HKCU" 
+                     Key="Software\DryEyeBlinkDetector" 
+                     Name="desktopShortcut" 
+                     Type="integer" 
+                     Value="1" 
+                     KeyPath="yes"/>
+    </Component>
+  </Fragment>
+</Wix>

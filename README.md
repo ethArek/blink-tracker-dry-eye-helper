@@ -5,7 +5,19 @@ to estimate eye aspect ratio (EAR) and track blink frequency over time. It provi
 live preview with session stats, writes structured logs, stores data in SQLite, and can
 export aggregates for analysis.
 
-## Requirements
+## Windows Installer (For Non-Technical Users)
+
+**Good news for Windows users!** You don't need to install Python or use the command line.
+
+Simply download and run the **DryEyeBlinkDetectorSetup.msi** installer:
+1. Double-click the MSI file to install
+2. Find "Dry Eye Blink Detector" in your Start Menu
+3. Click to launch the application
+4. No Python or technical setup required!
+
+For developers who want to build the installer themselves, see [BUILD_WINDOWS.md](BUILD_WINDOWS.md).
+
+## Requirements (For Python/Developer Installation)
 
 - Python 3.10+ (uses modern type annotations).
 - A working webcam and permission to access it.
@@ -14,15 +26,21 @@ export aggregates for analysis.
 Python packages:
 
 ```bash
+pip install -r requirements.txt
+```
+
+Or install individually:
+
+```bash
 pip install mediapipe opencv-python numpy
 ```
 
-## Installation
+## Installation (For Python/Developer Setup)
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install mediapipe opencv-python numpy
+pip install -r requirements.txt
 ```
 
 ## Usage

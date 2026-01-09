@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""
+MSI Installer Build Script for Dry Eye Blink Detector.
+
+This script automates the creation of a Windows MSI installer using WiX Toolset.
+It uses the WiX heat.exe tool to automatically harvest all files from the
+PyInstaller dist folder, then compiles the WXS file into an MSI.
+
+Prerequisites:
+- WiX Toolset 3.x or 4.x installed and in PATH
+- PyInstaller build completed (dist/DryEyeBlinkDetector folder exists)
+
+Usage:
+    python build_msi.py
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+def check_wix_installed():
+    """Check if WiX Toolset is installed and accessible."""
+    tools = ['candle.exe', 'light.exe', 'heat.exe']
+    for tool in tools:
+        if shutil.which(tool) is None:
+            return False, tool
+    return True, None
+
+
+def run_command(cmd, description):
+    """Run a command and handle errors."""
+    print(f"\n{description}...")
+    print(f"Command: {' '.join(cmd)}")
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+        if result.stdout:
+            print(result.stdout)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"\n❌ Error: {description} failed")
+        if e.stdout:
+            print("STDOUT:", e.stdout)
+        if e.stderr:
+            print("STDERR:", e.stderr)
+        return False
+
+
+def main():
+    """Build the MSI installer."""
+    print("=" * 70)
+    print("Building MSI Installer for Dry Eye Blink Detector")
+    print("=" * 70)
+    
+    # Get paths
+    project_root = Path(__file__).parent.absolute()
+    dist_dir = project_root / "dist" / "DryEyeBlinkDetector"
+    wxs_file = project_root / "DryEyeBlinkDetector.wxs"
+    
+    # Check if we're on Windows
+    if sys.platform != "win32":
+        print("\n❌ Error: MSI installers can only be built on Windows.")
+        print("   This script requires WiX Toolset which is Windows-only.")
+        return 1
+    
+    # Check if WiX is installed
+    print("\n📦 Checking for WiX Toolset...")
+    wix_installed, missing_tool = check_wix_installed()
+    if not wix_installed:
+        print(f"\n❌ Error: WiX Toolset not found. Missing tool: {missing_tool}")
+        print("\n   Please install WiX Toolset:")
+        print("   - Download from: https://wixtoolset.org/releases/")
+        print("   - Or use: winget install WiXToolset.WiX")
+        print("   - Or use: choco install wixtoolset")
+        print("\n   After installation, ensure the tools are in your PATH.")
+        return 1
+    print("   ✓ WiX Toolset found")
+    
+    # Check if PyInstaller build exists
+    print(f"\n📦 Checking for PyInstaller build...")
+    if not dist_dir.exists():
+        print(f"\n❌ Error: PyInstaller build not found at: {dist_dir}")
+        print("   Please run 'python build_windows.py' first to create the executable.")
+        return 1
+    
+    exe_file = dist_dir / "DryEyeBlinkDetector.exe"
+    if not exe_file.exists():
+        print(f"\n❌ Error: Executable not found at: {exe_file}")
+        print("   Please run 'python build_windows.py' first.")
+        return 1
+    
+    print(f"   ✓ Found executable: {exe_file}")
+    
+    # Count files in dist directory
+    file_count = sum(1 for _ in dist_dir.rglob("*") if _.is_file())
+    print(f"   ✓ Found {file_count} files to package")
+    
+    # Check if WXS template exists
+    if not wxs_file.exists():
+        print(f"\n❌ Error: WXS template not found: {wxs_file}")
+        return 1
+    
+    # Generate file list with heat.exe
+    print("\n🔥 Generating file manifest with heat.exe...")
+    heat_output = project_root / "HarvestedFiles.wxs"
+    
+    heat_cmd = [
+        "heat.exe",
+        "dir",
+        str(dist_dir),
+        "-cg", "HarvestedFiles",  # Component group name
+        "-gg",                      # Generate GUIDs
+        "-scom",                    # Suppress COM
+        "-sreg",                    # Suppress registry
+        "-sfrag",                   # Suppress fragments
+        "-srd",                     # Suppress root directory
+        "-dr", "INSTALLFOLDER",     # Directory reference
+        "-var", "var.SourceDir",    # Variable for source directory
+        "-out", str(heat_output)
+    ]
+    
+    if not run_command(heat_cmd, "Harvesting files"):
+        return 1
+    
+    print(f"   ✓ Generated: {heat_output}")
+    
+    # Compile WXS files with candle.exe
+    print("\n🕯️  Compiling WXS files with candle.exe...")
+    
+    wixobj_main = project_root / "DryEyeBlinkDetector.wixobj"
+    wixobj_harvest = project_root / "HarvestedFiles.wixobj"
+    
+    candle_cmd_main = [
+        "candle.exe",
+        str(wxs_file),
+        "-dSourceDir=" + str(dist_dir),
+        "-out", str(wixobj_main)
+    ]
+    
+    if not run_command(candle_cmd_main, "Compiling main WXS"):
+        return 1
+    
+    candle_cmd_harvest = [
+        "candle.exe",
+        str(heat_output),
+        "-dSourceDir=" + str(dist_dir),
+        "-out", str(wixobj_harvest)
+    ]
+    
+    if not run_command(candle_cmd_harvest, "Compiling harvested WXS"):
+        return 1
+    
+    # Link with light.exe
+    print("\n💡 Linking MSI with light.exe...")
+    
+    msi_output = project_root / "DryEyeBlinkDetectorSetup.msi"
+    
+    light_cmd = [
+        "light.exe",
+        str(wixobj_main),
+        str(wixobj_harvest),
+        "-ext", "WixUIExtension",
+        "-cultures:en-us",
+        "-out", str(msi_output)
+    ]
+    
+    if not run_command(light_cmd, "Creating MSI"):
+        return 1
+    
+    # Clean up intermediate files
+    print("\n🧹 Cleaning up intermediate files...")
+    intermediate_files = [
+        wixobj_main,
+        wixobj_harvest,
+        heat_output,
+        project_root / "DryEyeBlinkDetectorSetup.wixpdb"
+    ]
+    
+    for file in intermediate_files:
+        if file.exists():
+            print(f"   Removing {file.name}")
+            file.unlink()
+    
+    # Success!
+    if msi_output.exists():
+        msi_size_mb = msi_output.stat().st_size / (1024 * 1024)
+        print("\n" + "=" * 70)
+        print("✅ MSI Installer created successfully!")
+        print("=" * 70)
+        print(f"\n📦 Installer: {msi_output}")
+        print(f"   Size: {msi_size_mb:.2f} MB")
+        print(f"\n   You can now distribute this MSI installer to users.")
+        print(f"   Users can install by double-clicking the MSI file.")
+        return 0
+    else:
+        print("\n❌ Error: MSI file was not created.")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
