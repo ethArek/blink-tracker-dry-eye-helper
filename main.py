@@ -2,10 +2,12 @@ import cv2
 import logging
 import os
 import sys
+import threading
 import time
 from datetime import datetime
 
 import mediapipe as mp
+import numpy as np
 
 from blink_app.aggregates import AggregateState, update_aggregates
 from blink_app.cli import parse_args
@@ -34,19 +36,59 @@ def main() -> None:
     db_path = args.db_path or os.path.join(output_dir, "blinks.db")
     db_conn = init_db(db_path)
 
+    cap: cv2.VideoCapture | None = None
+    camera_ready = threading.Event()
+    camera_result: dict[str, str | cv2.VideoCapture | None] = {"error": None, "cap": None}
+
+    def open_camera() -> None:
+        local_cap = cv2.VideoCapture(args.camera_index)
+        if not local_cap.isOpened():
+            camera_result["error"] = "Cannot open camera."
+            camera_ready.set()
+            return
+        if args.fps is not None:
+            local_cap.set(cv2.CAP_PROP_FPS, args.fps)
+        camera_result["cap"] = local_cap
+        camera_ready.set()
+
+    app_logger.info("Starting blink detection. Initializing camera...")
+    window_name = "Blink detection"
+    cv2.namedWindow(window_name)
+    threading.Thread(target=open_camera, daemon=True).start()
+
+    waiting_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    while not camera_ready.is_set():
+        frame = waiting_frame.copy()
+        cv2.putText(
+            frame,
+            "Initializing camera...",
+            (30, 240),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.imshow(window_name, frame)
+        if cv2.waitKey(50) & 0xFF == 27:
+            app_logger.info("Exit requested during camera initialization.")
+            break
+
+    if camera_result["error"]:
+        app_logger.error("%s", camera_result["error"])
+        sys.exit(1)
+
+    cap = camera_result["cap"]
+    if cap is None:
+        app_logger.error("Camera did not initialize.")
+        sys.exit(1)
+
     mp_face_mesh = mp.solutions.face_mesh
     face_mesh = mp_face_mesh.FaceMesh(
         static_image_mode=False,
         max_num_faces=1,
         refine_landmarks=True,
     )
-
-    cap = cv2.VideoCapture(args.camera_index)
-    if not cap.isOpened():
-        app_logger.error("Cannot open camera.")
-        sys.exit(1)
-    if args.fps is not None:
-        cap.set(cv2.CAP_PROP_FPS, args.fps)
 
     app_logger.info("Camera started. Press ESC or Ctrl+C to exit.")
 
@@ -97,7 +139,7 @@ def main() -> None:
 
             rendered = render_overlay(frame, aggregate_state, blink_state, now_ts)
 
-            cv2.imshow("Blink detection", rendered)
+            cv2.imshow(window_name, rendered)
             if cv2.waitKey(1) & 0xFF == 27:
                 break
 
@@ -106,7 +148,8 @@ def main() -> None:
 
     finally:
         db_conn.close()
-        cap.release()
+        if cap is not None:
+            cap.release()
         cv2.destroyAllWindows()
         app_logger.info("Camera and windows closed. Goodbye!")
 
