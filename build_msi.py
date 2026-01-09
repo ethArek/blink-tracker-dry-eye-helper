@@ -111,11 +111,13 @@ def main():
     print("\n🔥 Generating file manifest with heat.exe...")
     heat_output = project_root / "HarvestedFiles.wxs"
     
+    # Note: The generated component group "HarvestedFiles" will be referenced
+    # in the main WXS file's Feature section to include all application files
     heat_cmd = [
         "heat.exe",
         "dir",
         str(dist_dir),
-        "-cg", "HarvestedFiles",  # Component group name
+        "-cg", "HarvestedFiles",  # Component group name (referenced in main WXS)
         "-gg",                      # Generate GUIDs
         "-scom",                    # Suppress COM
         "-sreg",                    # Suppress registry
