@@ -2,10 +2,13 @@ import cv2
 import logging
 import os
 import sys
+import threading
 import time
 from datetime import datetime
+from typing import TypedDict
 
 import mediapipe as mp
+import numpy as np
 
 from blink_app.aggregates import AggregateState, update_aggregates
 from blink_app.cli import parse_args
@@ -14,6 +17,11 @@ from blink_app.db import init_db
 from blink_app.detection import BlinkState, eye_aspect_ratio
 from blink_app.logging_utils import setup_logging
 from blink_app.render import render_overlay
+
+
+class CameraResult(TypedDict):
+    error: str | None
+    cap: cv2.VideoCapture | None
 
 
 def main() -> None:
@@ -34,19 +42,104 @@ def main() -> None:
     db_path = args.db_path or os.path.join(output_dir, "blinks.db")
     db_conn = init_db(db_path)
 
+    cap: cv2.VideoCapture | None = None
+    camera_ready = threading.Event()
+    camera_result: CameraResult = {"error": None, "cap": None}
+
+    def open_camera() -> None:
+        local_cap = None
+        try:
+            local_cap = cv2.VideoCapture(args.camera_index)
+            if not local_cap.isOpened():
+                camera_result["error"] = "Cannot open camera."
+                local_cap.release()
+                return
+            if args.fps is not None:
+                local_cap.set(cv2.CAP_PROP_FPS, args.fps)
+            camera_result["cap"] = local_cap
+        except Exception as e:
+            camera_result["error"] = f"Camera initialization error: {e}"
+            if local_cap is not None:
+                local_cap.release()
+        finally:
+            camera_ready.set()
+
+    app_logger.info("Starting blink detection. Initializing camera...")
+    window_name = "Blink detection"
+    cv2.namedWindow(window_name)
+    camera_thread = threading.Thread(target=open_camera, daemon=False)
+    camera_thread.start()
+
+    user_exit_during_init = False
+    user_cancelled = False
+    try:
+        waiting_height = int(os.getenv("BLINK_APP_INIT_HEIGHT", "480"))
+    except (TypeError, ValueError):
+        waiting_height = 480
+    try:
+        waiting_width = int(os.getenv("BLINK_APP_INIT_WIDTH", "640"))
+    except (TypeError, ValueError):
+        waiting_width = 640
+
+    waiting_frame = np.zeros((waiting_height, waiting_width, 3), dtype=np.uint8)
+    while not camera_ready.is_set():
+        frame = waiting_frame.copy()
+        cv2.putText(
+            frame,
+            "Initializing camera...",
+            (30, 240),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.imshow(window_name, frame)
+        if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+            app_logger.info("Window closed during camera initialization.")
+            user_exit_during_init = True
+            break
+        if cv2.waitKey(50) & 0xFF == 27:
+            app_logger.info("Exit requested during camera initialization.")
+            user_exit_during_init = True
+            break
+
+    # Wait for the camera thread to complete
+    camera_thread.join()
+
+    # If user requested exit during initialization, clean up and exit
+    if user_exit_during_init:
+        cap = camera_result["cap"]
+        if cap is not None:
+            cap.release()
+        cv2.destroyAllWindows()
+        db_conn.close()
+        app_logger.info("Exited during initialization. Goodbye!")
+        user_cancelled = True
+
+    if user_cancelled:
+        cv2.destroyAllWindows()
+        sys.exit(0)
+
+    if camera_result["error"]:
+        app_logger.error("%s", camera_result["error"])
+        cv2.destroyAllWindows()
+        db_conn.close()
+        sys.exit(1)
+
+    cap = camera_result["cap"]
+    if cap is None:
+        app_logger.error("Camera did not initialize.")
+        cv2.destroyAllWindows()
+        db_conn.close()
+        sys.exit(1)
+
     mp_face_mesh = mp.solutions.face_mesh
     face_mesh = mp_face_mesh.FaceMesh(
         static_image_mode=False,
         max_num_faces=1,
         refine_landmarks=True,
     )
-
-    cap = cv2.VideoCapture(args.camera_index)
-    if not cap.isOpened():
-        app_logger.error("Cannot open camera.")
-        sys.exit(1)
-    if args.fps is not None:
-        cap.set(cv2.CAP_PROP_FPS, args.fps)
 
     app_logger.info("Camera started. Press ESC or Ctrl+C to exit.")
 
@@ -97,7 +190,10 @@ def main() -> None:
 
             rendered = render_overlay(frame, aggregate_state, blink_state, now_ts)
 
-            cv2.imshow("Blink detection", rendered)
+            cv2.imshow(window_name, rendered)
+            if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                app_logger.info("Window closed by user.")
+                break
             if cv2.waitKey(1) & 0xFF == 27:
                 break
 
@@ -106,7 +202,8 @@ def main() -> None:
 
     finally:
         db_conn.close()
-        cap.release()
+        if cap is not None:
+            cap.release()
         cv2.destroyAllWindows()
         app_logger.info("Camera and windows closed. Goodbye!")
 
