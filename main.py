@@ -62,6 +62,7 @@ def main() -> None:
     cv2.namedWindow(window_name)
     threading.Thread(target=open_camera, daemon=True).start()
 
+    user_cancelled = False
     try:
         waiting_height = int(os.getenv("BLINK_APP_INIT_HEIGHT", "480"))
     except (TypeError, ValueError):
@@ -87,10 +88,16 @@ def main() -> None:
         cv2.imshow(window_name, frame)
         if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
             app_logger.info("Window closed during camera initialization.")
+            user_cancelled = True
             break
         if cv2.waitKey(50) & 0xFF == 27:
             app_logger.info("Exit requested during camera initialization.")
+            user_cancelled = True
             break
+
+    if user_cancelled:
+        cv2.destroyAllWindows()
+        sys.exit(0)
 
     if camera_result["error"]:
         app_logger.error("%s", camera_result["error"])
