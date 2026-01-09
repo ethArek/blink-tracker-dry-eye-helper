@@ -38,13 +38,22 @@ blink_counter = 0
 blink_timestamps = []       # datetime
 blink_timestamps_day = []   # float (timestamp)
 
+def non_negative_int(value: str) -> int:
+    try:
+        ivalue = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid integer value: {value}") from exc
+    if ivalue < 0:
+        raise argparse.ArgumentTypeError("Camera index must be a non-negative integer.")
+    return ivalue
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Detect blinks and log blink counts.")
     parser.add_argument(
         "--camera-index",
-        type=int,
+        type=non_negative_int,
         default=0,
-        help="Camera index to open (default: 0).",
+        help="Camera index to open (must be a non-negative integer, default: 0).",
     )
     parser.add_argument(
         "--ear-threshold",
@@ -148,7 +157,11 @@ EAR_THRESHOLD = args.ear_threshold
 EAR_CONSEC_FRAMES = args.ear_consec_frames
 
 output_dir = args.output_dir
-os.makedirs(output_dir, exist_ok=True)
+try:
+    os.makedirs(output_dir, exist_ok=True)
+except OSError as e:
+    print(f"Error: could not create output directory '{output_dir}': {e}", file=sys.stderr)
+    sys.exit(1)
 
 def output_path(filename: str) -> str:
     return os.path.join(output_dir, filename)
