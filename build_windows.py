@@ -97,24 +97,20 @@ def main():
             check=True
         )
         
-        if result.returncode == 0:
-            print("\n✅ Build completed successfully!")
-            
-            # Check if executable was created
-            exe_path = project_root / "dist" / "DryEyeBlinkDetector" / "DryEyeBlinkDetector.exe"
-            if exe_path.exists():
-                exe_size_mb = exe_path.stat().st_size / (1024 * 1024)
-                print(f"\n📦 Executable created: {exe_path}")
-                print(f"   Size: {exe_size_mb:.2f} MB")
-                print(f"\n   The executable and all required files are in:")
-                print(f"   {exe_path.parent}")
-            else:
-                print(f"\n⚠️  Warning: Expected executable not found at {exe_path}")
-            
-            return 0
+        print("\n✅ Build completed successfully!")
+        
+        # Check if executable was created
+        exe_path = project_root / "dist" / "DryEyeBlinkDetector" / "DryEyeBlinkDetector.exe"
+        if exe_path.exists():
+            exe_size_mb = exe_path.stat().st_size / (1024 * 1024)
+            print(f"\n📦 Executable created: {exe_path}")
+            print(f"   Size: {exe_size_mb:.2f} MB")
+            print(f"\n   The executable and all required files are in:")
+            print(f"   {exe_path.parent}")
         else:
-            print("\n❌ Build failed.")
-            return 1
+            print(f"\n⚠️  Warning: Expected executable not found at {exe_path}")
+        
+        return 0
             
     except subprocess.CalledProcessError as e:
         print(f"\n❌ Build failed with error code {e.returncode}")

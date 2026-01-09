@@ -28,7 +28,7 @@ a = Analysis(
         'cv2',
         'numpy',
         'sqlite3',
-        'winsound',  # Windows audio support
+        'winsound',  # Required for Windows audio alerts in blink_app/alert.py
     ] + mediapipe_hidden_imports,
     hookspath=[],
     hooksconfig={},
