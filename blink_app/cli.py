@@ -1,6 +1,12 @@
 import argparse
 
-from blink_app.constants import ALERT_SOUND, EAR_CONSEC_FRAMES, EAR_THRESHOLD
+from blink_app.constants import (
+    ALERT_NO_BLINK_SECONDS,
+    ALERT_REPEAT_SECONDS,
+    ALERT_SOUND,
+    EAR_CONSEC_FRAMES,
+    EAR_THRESHOLD,
+)
 
 
 def non_negative_int(value: str) -> int:
@@ -83,5 +89,35 @@ def parse_args() -> argparse.Namespace:
             "Path to a custom sound file (WAV/AIFF, best-effort) to play for alerts; "
             "overrides --alert-sound."
         ),
+    )
+    parser.add_argument(
+        "--alert-after-seconds",
+        type=float,
+        default=ALERT_NO_BLINK_SECONDS,
+        help=(
+            "Seconds without a blink before playing an alert "
+            f"(default: {ALERT_NO_BLINK_SECONDS})."
+        ),
+    )
+    parser.add_argument(
+        "--alert-repeat-seconds",
+        type=float,
+        default=ALERT_REPEAT_SECONDS,
+        help=(
+            "Seconds to wait between alert sounds when no blink is detected "
+            f"(default: {ALERT_REPEAT_SECONDS})."
+        ),
+    )
+    parser.add_argument(
+        "--disable-alerts",
+        action="store_true",
+        help="Disable audio alerts when no blink is detected.",
+    )
+    # Backwards compatibility with earlier CLI that defaulted to alerts-disabled.
+    parser.add_argument(
+        "--enable-alerts",
+        action="store_false",
+        dest="disable_alerts",
+        help="Enable audio alerts when no blink is detected.",
     )
     return parser.parse_args()
