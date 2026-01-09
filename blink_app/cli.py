@@ -1,6 +1,11 @@
 import argparse
 
-from blink_app.constants import EAR_CONSEC_FRAMES, EAR_THRESHOLD
+from blink_app.constants import (
+    ALERT_NO_BLINK_SECONDS,
+    ALERT_REPEAT_SECONDS,
+    EAR_CONSEC_FRAMES,
+    EAR_THRESHOLD,
+)
 
 
 def non_negative_int(value: str) -> int:
@@ -54,4 +59,29 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Path to SQLite database for blink events (default: <output-dir>/blinks.db).",
     )
+    parser.add_argument(
+        "--alert-after-seconds",
+        type=float,
+        default=ALERT_NO_BLINK_SECONDS,
+        help=(
+            "Seconds without a blink before playing an alert "
+            f"(default: {ALERT_NO_BLINK_SECONDS})."
+        ),
+    )
+    parser.add_argument(
+        "--alert-repeat-seconds",
+        type=float,
+        default=ALERT_REPEAT_SECONDS,
+        help=(
+            "Seconds to wait between alert sounds when no blink is detected "
+            f"(default: {ALERT_REPEAT_SECONDS})."
+        ),
+    )
+    parser.add_argument(
+        "--enable-alerts",
+        action="store_false",
+        dest="disable_alerts",
+        help="Enable audio alerts when no blink is detected.",
+    )
+    parser.set_defaults(disable_alerts=True)
     return parser.parse_args()
