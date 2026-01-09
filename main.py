@@ -8,6 +8,7 @@ import math
 import os
 import platform
 import shutil
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -38,9 +39,6 @@ ALERT_REPEAT_SECONDS = 30
 
 frame_counter = 0
 blink_counter = 0
-blink_timestamps = []       # datetime
-blink_timestamps_day = []   # float (timestamp)
-
 def non_negative_int(value: str) -> int:
     try:
         ivalue = int(value)
@@ -85,6 +83,11 @@ def parse_args() -> argparse.Namespace:
         "--csv-output",
         action="store_true",
         help="Enable CSV export for blink metrics (default: disabled).",
+    )
+    parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Path to SQLite database for blink events (default: <output-dir>/blinks.db).",
     )
     return parser.parse_args()
 
@@ -156,9 +159,84 @@ def play_alert_sound():
 
     threading.Thread(target=_play, daemon=True).start()
 
-# Count blinks in a given time range
-def count_blinks_in_range(blinks, start: datetime, end: datetime) -> int:
-    return sum(1 for t in blinks if start <= t <= end)
+def init_db(db_path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS blink_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_time TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS blink_aggregates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            interval_type TEXT NOT NULL,
+            interval_start TEXT NOT NULL,
+            interval_end TEXT NOT NULL,
+            blink_count INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(interval_type, interval_start)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_blink_events_time ON blink_events(event_time)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_blink_aggregates_type_start ON blink_aggregates(interval_type, interval_start)"
+    )
+    conn.commit()
+    return conn
+
+def record_blink_event(conn: sqlite3.Connection, event_time: datetime) -> None:
+    conn.execute(
+        "INSERT INTO blink_events (event_time) VALUES (?)",
+        (event_time.strftime("%Y-%m-%d %H:%M:%S"),),
+    )
+    conn.commit()
+
+def count_blinks_in_range(conn: sqlite3.Connection, start: datetime, end: datetime) -> int:
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM blink_events WHERE event_time >= ? AND event_time <= ?",
+        (
+            start.strftime("%Y-%m-%d %H:%M:%S"),
+            end.strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+    row = cursor.fetchone()
+    return row[0] if row else 0
+
+def record_aggregate(
+    conn: sqlite3.Connection,
+    interval_type: str,
+    start: datetime,
+    end: datetime,
+    blink_count: int,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO blink_aggregates (
+            interval_type,
+            interval_start,
+            interval_end,
+            blink_count
+        )
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(interval_type, interval_start)
+        DO UPDATE SET blink_count = excluded.blink_count, interval_end = excluded.interval_end
+        """,
+        (
+            interval_type,
+            start.strftime("%Y-%m-%d %H:%M:%S"),
+            end.strftime("%Y-%m-%d %H:%M:%S"),
+            blink_count,
+        ),
+    )
+    conn.commit()
 
 args = parse_args()
 EAR_THRESHOLD = args.ear_threshold
@@ -224,6 +302,8 @@ def write_csv_row(path: str, headers: list[str], row: list[object]) -> None:
         writer.writerow(row)
 
 blink_logger, aggregate_logger = setup_logging()
+db_path = args.db_path or output_path("blinks.db")
+db_conn = init_db(db_path)
 
 # Init mediapipe
 mp_face_mesh = mp.solutions.face_mesh
@@ -244,6 +324,7 @@ last_stats_time = time.time()
 last_logged_minute = None
 last_logged_10minute = None
 last_logged_hour = None
+last_logged_day = None
 # NOTE: These time-tracking variables are written from the main thread only.
 # Background threads may read them, and we currently rely on CPython's GIL and
 # simple float assignments being effectively atomic. If more complex, compound
@@ -256,6 +337,7 @@ last_alert_time = 0.0
 blinks_1m = 0
 blinks_10m = 0
 blinks_1h = 0
+blinks_day = 0
 
 
 
@@ -288,10 +370,9 @@ try:
                 else:
                     if frame_counter >= EAR_CONSEC_FRAMES:
                         blink_counter += 1
-                        blink_timestamps.append(now_dt)
-                        blink_timestamps_day.append(now_ts)
                         last_blink_time = now_ts
                         blink_logger.info("Blink #%d", blink_counter)
+                        record_blink_event(db_conn, now_dt)
                     frame_counter = 0
 
         # Every second: check if it's time to log full intervals
@@ -305,19 +386,17 @@ try:
                 play_alert_sound()
                 last_alert_time = now_ts
 
-            # Filter old data
-            blink_timestamps = [t for t in blink_timestamps if (now_dt - t).total_seconds() <= 3600]
-            blink_timestamps_day = [t for t in blink_timestamps_day if datetime.fromtimestamp(t).date() == now_dt.date()]
-
             # FULL MINUTE LOG
             current_minute = now_dt.replace(second=0, microsecond=0) - timedelta(minutes=1)
             if last_logged_minute != current_minute:
-                blinks_1m = count_blinks_in_range(blink_timestamps, current_minute, current_minute + timedelta(minutes=1) - timedelta(seconds=1))
+                minute_end = current_minute + timedelta(minutes=1) - timedelta(seconds=1)
+                blinks_1m = count_blinks_in_range(db_conn, current_minute, minute_end)
                 aggregate_logger.info(
                     "minute_interval start=%s blinks=%d",
                     current_minute.strftime("%Y-%m-%d %H:%M:%S"),
                     blinks_1m,
                 )
+                record_aggregate(db_conn, "minute", current_minute, minute_end, blinks_1m)
                 if args.csv_output:
                     write_csv_row(
                         output_path("blinks_per_minute.csv"),
@@ -330,12 +409,14 @@ try:
             minute_mod = now_dt.minute % 10
             current_10minute = now_dt.replace(minute=now_dt.minute - minute_mod, second=0, microsecond=0) - timedelta(minutes=10)
             if last_logged_10minute != current_10minute:
-                blinks_10m = count_blinks_in_range(blink_timestamps, current_10minute, current_10minute + timedelta(minutes=10) - timedelta(seconds=1))
+                ten_minute_end = current_10minute + timedelta(minutes=10) - timedelta(seconds=1)
+                blinks_10m = count_blinks_in_range(db_conn, current_10minute, ten_minute_end)
                 aggregate_logger.info(
                     "ten_minute_interval start=%s blinks=%d",
                     current_10minute.strftime("%Y-%m-%d %H:%M:%S"),
                     blinks_10m,
                 )
+                record_aggregate(db_conn, "ten_minute", current_10minute, ten_minute_end, blinks_10m)
                 if args.csv_output:
                     write_csv_row(
                         output_path("blinks_per_10_minutes.csv"),
@@ -347,12 +428,14 @@ try:
             # FULL HOUR LOG
             current_hour = now_dt.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
             if last_logged_hour != current_hour:
-                blinks_1h = count_blinks_in_range(blink_timestamps, current_hour, current_hour + timedelta(hours=1) - timedelta(seconds=1))
+                hour_end = current_hour + timedelta(hours=1) - timedelta(seconds=1)
+                blinks_1h = count_blinks_in_range(db_conn, current_hour, hour_end)
                 aggregate_logger.info(
                     "hour_interval start=%s blinks=%d",
                     current_hour.strftime("%Y-%m-%d %H:%M:%S"),
                     blinks_1h,
                 )
+                record_aggregate(db_conn, "hour", current_hour, hour_end, blinks_1h)
                 if args.csv_output:
                     write_csv_row(
                         output_path("blinks_per_hour.csv"),
@@ -361,8 +444,35 @@ try:
                     )
                 last_logged_hour = current_hour
 
-            # DAILY LOG (still logs every second — acceptable)
-            blinks_day = len(blink_timestamps_day)
+            # DAILY LOG (aggregate previous full day, show current day total)
+            current_day_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            previous_day_start = current_day_start - timedelta(days=1)
+            if last_logged_day != previous_day_start:
+                previous_day_end = current_day_start - timedelta(seconds=1)
+                previous_day_total = count_blinks_in_range(
+                    db_conn,
+                    previous_day_start,
+                    previous_day_end,
+                )
+                aggregate_logger.info(
+                    "day_interval start=%s blinks=%d",
+                    previous_day_start.strftime("%Y-%m-%d %H:%M:%S"),
+                    previous_day_total,
+                )
+                record_aggregate(
+                    db_conn,
+                    "day",
+                    previous_day_start,
+                    previous_day_end,
+                    previous_day_total,
+                )
+                last_logged_day = previous_day_start
+
+            blinks_day = count_blinks_in_range(
+                db_conn,
+                current_day_start,
+                now_dt,
+            )
             aggregate_logger.info("daily_total date=%s blinks=%d", date_str, blinks_day)
             if args.csv_output:
                 write_csv_row(
@@ -389,6 +499,7 @@ except KeyboardInterrupt:
     app_logger.info("Stopped by Ctrl+C")
 
 finally:
+    db_conn.close()
     cap.release()
     cv2.destroyAllWindows()
     app_logger.info("Camera and windows closed. Goodbye!")
