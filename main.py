@@ -46,9 +46,7 @@ def main() -> None:
             local_cap = cv2.VideoCapture(args.camera_index)
             if not local_cap.isOpened():
                 camera_result["error"] = "Cannot open camera."
-                if local_cap is not None:
-                    local_cap.release()
-                camera_ready.set()
+                local_cap.release()
                 return
             if args.fps is not None:
                 local_cap.set(cv2.CAP_PROP_FPS, args.fps)
