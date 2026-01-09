@@ -1,5 +1,8 @@
 import argparse
+import csv
 import cv2
+import logging
+import logging.handlers
 import mediapipe as mp
 import math
 import os
@@ -77,6 +80,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help="Requested capture FPS (default: camera default).",
+    )
+    parser.add_argument(
+        "--csv-output",
+        action="store_true",
+        help="Enable CSV export for blink metrics (default: disabled).",
     )
     return parser.parse_args()
 
@@ -157,14 +165,65 @@ EAR_THRESHOLD = args.ear_threshold
 EAR_CONSEC_FRAMES = args.ear_consec_frames
 
 output_dir = args.output_dir
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+app_logger = logging.getLogger("app")
 try:
     os.makedirs(output_dir, exist_ok=True)
 except OSError as e:
-    print(f"Error: could not create output directory '{output_dir}': {e}", file=sys.stderr)
+    app_logger.error("Could not create output directory '%s': %s", output_dir, e)
     sys.exit(1)
 
 def output_path(filename: str) -> str:
     return os.path.join(output_dir, filename)
+
+def setup_logging() -> tuple[logging.Logger, logging.Logger]:
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    blink_handler = logging.handlers.RotatingFileHandler(
+        output_path("blink_events.log"),
+        maxBytes=1_000_000,
+        backupCount=3,
+    )
+    blink_handler.setFormatter(formatter)
+    blink_logger = logging.getLogger("blink_events")
+    blink_logger.setLevel(logging.INFO)
+    blink_logger.addHandler(blink_handler)
+    blink_logger.propagate = False
+
+    aggregate_handler = logging.handlers.RotatingFileHandler(
+        output_path("aggregate_metrics.log"),
+        maxBytes=1_000_000,
+        backupCount=3,
+    )
+    aggregate_handler.setFormatter(formatter)
+    aggregate_logger = logging.getLogger("aggregate_metrics")
+    aggregate_logger.setLevel(logging.INFO)
+    aggregate_logger.addHandler(aggregate_handler)
+    aggregate_logger.propagate = False
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    app_logger.setLevel(logging.INFO)
+    app_logger.propagate = False
+    # Ensure there is exactly one console StreamHandler attached to app_logger
+    app_logger.handlers = [
+        h for h in app_logger.handlers
+        if not isinstance(h, logging.StreamHandler)
+    ]
+    app_logger.addHandler(console_handler)
+    return blink_logger, aggregate_logger
+
+def write_csv_row(path: str, headers: list[str], row: list[object]) -> None:
+    with open(path, "a", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        # Write headers if the file is empty (new or truncated).
+        if csvfile.tell() == 0:
+            writer.writerow(headers)
+        writer.writerow(row)
+
+blink_logger, aggregate_logger = setup_logging()
 
 # Init mediapipe
 mp_face_mesh = mp.solutions.face_mesh
@@ -173,12 +232,12 @@ face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refi
 # Init camera
 cap = cv2.VideoCapture(args.camera_index)
 if not cap.isOpened():
-    print("Cannot open camera.")
-    exit()
+    app_logger.error("Cannot open camera.")
+    sys.exit(1)
 if args.fps is not None:
     cap.set(cv2.CAP_PROP_FPS, args.fps)
 
-print("Camera started. Press ESC or Ctrl+C to exit.")
+app_logger.info("Camera started. Press ESC or Ctrl+C to exit.")
 
 # Time trackers
 last_stats_time = time.time()
@@ -204,7 +263,7 @@ try:
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("Failed to read frame.")
+            app_logger.warning("Failed to read frame.")
             break
 
         h, w = frame.shape[:2]
@@ -232,7 +291,7 @@ try:
                         blink_timestamps.append(now_dt)
                         blink_timestamps_day.append(now_ts)
                         last_blink_time = now_ts
-                        print(f"Blink #{blink_counter}")
+                        blink_logger.info("Blink #%d", blink_counter)
                     frame_counter = 0
 
         # Every second: check if it's time to log full intervals
@@ -254,8 +313,17 @@ try:
             current_minute = now_dt.replace(second=0, microsecond=0) - timedelta(minutes=1)
             if last_logged_minute != current_minute:
                 blinks_1m = count_blinks_in_range(blink_timestamps, current_minute, current_minute + timedelta(minutes=1) - timedelta(seconds=1))
-                with open(output_path("blinks_per_minute.txt"), "a") as f:
-                    f.write(f"{date_str} {current_minute.strftime('%H:%M:%S')} - {blinks_1m}\n")
+                aggregate_logger.info(
+                    "minute_interval start=%s blinks=%d",
+                    current_minute.strftime("%Y-%m-%d %H:%M:%S"),
+                    blinks_1m,
+                )
+                if args.csv_output:
+                    write_csv_row(
+                        output_path("blinks_per_minute.csv"),
+                        ["date", "interval_start", "blinks"],
+                        [date_str, current_minute.strftime("%H:%M:%S"), blinks_1m],
+                    )
                 last_logged_minute = current_minute
 
             # FULL 10-MINUTE LOG
@@ -263,40 +331,45 @@ try:
             current_10minute = now_dt.replace(minute=now_dt.minute - minute_mod, second=0, microsecond=0) - timedelta(minutes=10)
             if last_logged_10minute != current_10minute:
                 blinks_10m = count_blinks_in_range(blink_timestamps, current_10minute, current_10minute + timedelta(minutes=10) - timedelta(seconds=1))
-                with open(output_path("blinks_per_10_minutes.txt"), "a") as f:
-                    f.write(f"{date_str} {current_10minute.strftime('%H:%M:%S')} - {blinks_10m}\n")
+                aggregate_logger.info(
+                    "ten_minute_interval start=%s blinks=%d",
+                    current_10minute.strftime("%Y-%m-%d %H:%M:%S"),
+                    blinks_10m,
+                )
+                if args.csv_output:
+                    write_csv_row(
+                        output_path("blinks_per_10_minutes.csv"),
+                        ["date", "interval_start", "blinks"],
+                        [date_str, current_10minute.strftime("%H:%M:%S"), blinks_10m],
+                    )
                 last_logged_10minute = current_10minute
 
             # FULL HOUR LOG
             current_hour = now_dt.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
             if last_logged_hour != current_hour:
                 blinks_1h = count_blinks_in_range(blink_timestamps, current_hour, current_hour + timedelta(hours=1) - timedelta(seconds=1))
-                with open(output_path("blinks_per_hour.txt"), "a") as f:
-                    f.write(f"{date_str} {current_hour.strftime('%H:%M:%S')} - {blinks_1h}\n")
+                aggregate_logger.info(
+                    "hour_interval start=%s blinks=%d",
+                    current_hour.strftime("%Y-%m-%d %H:%M:%S"),
+                    blinks_1h,
+                )
+                if args.csv_output:
+                    write_csv_row(
+                        output_path("blinks_per_hour.csv"),
+                        ["date", "interval_start", "blinks"],
+                        [date_str, current_hour.strftime("%H:%M:%S"), blinks_1h],
+                    )
                 last_logged_hour = current_hour
 
             # DAILY LOG (still logs every second — acceptable)
             blinks_day = len(blink_timestamps_day)
-            day_line = f"{date_str} - {blinks_day}\n"
-
-            try:
-                with open(output_path("blinks_per_day.txt"), "r") as f:
-                    lines = f.readlines()
-            except FileNotFoundError:
-                lines = []
-
-            found = False
-            for i, line in enumerate(lines):
-                if line.startswith(date_str):
-                    lines[i] = day_line
-                    found = True
-                    break
-
-            if not found:
-                lines.append(day_line)
-
-            with open(output_path("blinks_per_day.txt"), "w") as f:
-                f.writelines(lines)
+            aggregate_logger.info("daily_total date=%s blinks=%d", date_str, blinks_day)
+            if args.csv_output:
+                write_csv_row(
+                    output_path("blinks_per_day.csv"),
+                    ["date", "blinks"],
+                    [date_str, blinks_day],
+                )
 
         # Display info on camera frame
         cv2.putText(frame, "Blinks (full intervals):", (10, 30),
@@ -313,9 +386,9 @@ try:
             break
 
 except KeyboardInterrupt:
-    print("\nStopped by Ctrl+C")
+    app_logger.info("Stopped by Ctrl+C")
 
 finally:
     cap.release()
     cv2.destroyAllWindows()
-    print("Camera and windows closed. Goodbye!")
+    app_logger.info("Camera and windows closed. Goodbye!")
