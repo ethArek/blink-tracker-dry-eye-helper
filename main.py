@@ -56,7 +56,16 @@ def main() -> None:
     cv2.namedWindow(window_name)
     threading.Thread(target=open_camera, daemon=True).start()
 
-    waiting_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    try:
+        waiting_height = int(os.getenv("BLINK_APP_INIT_HEIGHT", "480"))
+    except (TypeError, ValueError):
+        waiting_height = 480
+    try:
+        waiting_width = int(os.getenv("BLINK_APP_INIT_WIDTH", "640"))
+    except (TypeError, ValueError):
+        waiting_width = 640
+
+    waiting_frame = np.zeros((waiting_height, waiting_width, 3), dtype=np.uint8)
     while not camera_ready.is_set():
         frame = waiting_frame.copy()
         cv2.putText(
