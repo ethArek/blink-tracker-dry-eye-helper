@@ -116,8 +116,9 @@ def parse_args() -> argparse.Namespace:
     # Backwards compatibility with earlier CLI that defaulted to alerts-disabled.
     parser.add_argument(
         "--enable-alerts",
-        action="store_false",
-        dest="disable_alerts",
+        action="store_true",
+        dest="enable_alerts",
         help="Enable audio alerts when no blink is detected.",
     )
+    parser.set_defaults(enable_alerts=False)
     return parser.parse_args()

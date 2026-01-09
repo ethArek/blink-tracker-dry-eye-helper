@@ -51,11 +51,11 @@ def update_aggregates(
     state.last_stats_time = now_ts
 
     if not getattr(args, "disable_alerts", False):
-        alert_after = getattr(args, "alert_after_seconds", ALERT_NO_BLINK_SECONDS)
-        alert_repeat = getattr(args, "alert_repeat_seconds", ALERT_REPEAT_SECONDS)
+        alert_after_seconds = getattr(args, "alert_after_seconds", ALERT_NO_BLINK_SECONDS)
+        alert_repeat_seconds = getattr(args, "alert_repeat_seconds", ALERT_REPEAT_SECONDS)
         if (
-            now_ts - blink_state.last_blink_time >= alert_after
-            and now_ts - state.last_alert_time >= alert_repeat
+            now_ts - blink_state.last_blink_time >= alert_after_seconds
+            and now_ts - state.last_alert_time >= alert_repeat_seconds
         ):
             alert_sound = getattr(args, "alert_sound", "exclamation")
             alert_sound_file = getattr(args, "alert_sound_file", None)
