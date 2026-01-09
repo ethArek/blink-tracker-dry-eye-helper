@@ -115,12 +115,7 @@ def main() -> None:
         cv2.destroyAllWindows()
         db_conn.close()
         app_logger.info("Exited during initialization. Goodbye!")
-            user_cancelled = True
-            break
-        if cv2.waitKey(50) & 0xFF == 27:
-            app_logger.info("Exit requested during camera initialization.")
-            user_cancelled = True
-            break
+        user_cancelled = True
 
     if user_cancelled:
         cv2.destroyAllWindows()
