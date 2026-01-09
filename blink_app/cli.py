@@ -19,6 +19,16 @@ def non_negative_int(value: str) -> int:
     return ivalue
 
 
+def positive_float(value: str) -> float:
+    try:
+        fvalue = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid float value: {value}") from exc
+    if fvalue <= 0:
+        raise argparse.ArgumentTypeError("Value must be a positive number.")
+    return fvalue
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Detect blinks and log blink counts.")
     parser.add_argument(
@@ -92,7 +102,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--alert-after-seconds",
-        type=float,
+        type=positive_float,
         default=ALERT_NO_BLINK_SECONDS,
         help=(
             "Seconds without a blink before playing an alert "
@@ -101,7 +111,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--alert-repeat-seconds",
-        type=float,
+        type=positive_float,
         default=ALERT_REPEAT_SECONDS,
         help=(
             "Seconds to wait between alert sounds when no blink is detected "
