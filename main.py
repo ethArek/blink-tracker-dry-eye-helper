@@ -173,7 +173,7 @@ app_logger = logging.getLogger("app")
 try:
     os.makedirs(output_dir, exist_ok=True)
 except OSError as e:
-    app_logger.error("Error: could not create output directory '%s': %s", output_dir, e)
+    app_logger.error("Could not create output directory '%s': %s", output_dir, e)
     sys.exit(1)
 
 def output_path(filename: str) -> str:
@@ -207,15 +207,19 @@ def setup_logging() -> tuple[logging.Logger, logging.Logger]:
     console_handler.setFormatter(formatter)
     app_logger.setLevel(logging.INFO)
     app_logger.propagate = False
-    if not any(isinstance(h, logging.StreamHandler) for h in app_logger.handlers):
-        app_logger.addHandler(console_handler)
+    # Ensure there is exactly one console StreamHandler attached to app_logger
+    app_logger.handlers = [
+        h for h in app_logger.handlers
+        if not isinstance(h, logging.StreamHandler)
+    ]
+    app_logger.addHandler(console_handler)
     return blink_logger, aggregate_logger
 
 def write_csv_row(path: str, headers: list[str], row: list[object]) -> None:
-    file_exists = os.path.exists(path)
     with open(path, "a", newline="") as csvfile:
         writer = csv.writer(csvfile)
-        if not file_exists:
+        # Write headers if the file is empty (new or truncated).
+        if csvfile.tell() == 0:
             writer.writerow(headers)
         writer.writerow(row)
 
