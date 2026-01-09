@@ -49,7 +49,7 @@ def update_aggregates(
         return
     state.last_stats_time = now_ts
 
-    if not getattr(args, "disable_alerts", False):
+    if getattr(args, "enable_alerts", False):
         alert_after_seconds = getattr(args, "alert_after_seconds", ALERT_NO_BLINK_SECONDS)
         alert_repeat_seconds = getattr(args, "alert_repeat_seconds", ALERT_REPEAT_SECONDS)
         if (
