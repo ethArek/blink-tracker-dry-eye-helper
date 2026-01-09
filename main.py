@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from datetime import datetime
+from typing import TypedDict
 
 import mediapipe as mp
 import numpy as np
@@ -16,6 +17,11 @@ from blink_app.db import init_db
 from blink_app.detection import BlinkState, eye_aspect_ratio
 from blink_app.logging_utils import setup_logging
 from blink_app.render import render_overlay
+
+
+class CameraResult(TypedDict):
+    error: str | None
+    cap: cv2.VideoCapture | None
 
 
 def main() -> None:
@@ -38,7 +44,7 @@ def main() -> None:
 
     cap: cv2.VideoCapture | None = None
     camera_ready = threading.Event()
-    camera_result: dict[str, str | cv2.VideoCapture | None] = {"error": None, "cap": None}
+    camera_result: CameraResult = {"error": None, "cap": None}
 
     def open_camera() -> None:
         local_cap = cv2.VideoCapture(args.camera_index)
