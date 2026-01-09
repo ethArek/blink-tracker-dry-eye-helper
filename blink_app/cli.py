@@ -1,6 +1,12 @@
 import argparse
 
-from blink_app.constants import ALERT_SOUND, EAR_CONSEC_FRAMES, EAR_THRESHOLD
+from blink_app.constants import (
+    ALERT_NO_BLINK_SECONDS,
+    ALERT_REPEAT_SECONDS,
+    ALERT_SOUND,
+    EAR_CONSEC_FRAMES,
+    EAR_THRESHOLD,
+)
 
 
 def non_negative_int(value: str) -> int:
@@ -11,6 +17,16 @@ def non_negative_int(value: str) -> int:
     if ivalue < 0:
         raise argparse.ArgumentTypeError("Camera index must be a non-negative integer.")
     return ivalue
+
+
+def positive_float(value: str) -> float:
+    try:
+        fvalue = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid float value: {value}") from exc
+    if fvalue <= 0:
+        raise argparse.ArgumentTypeError("Value must be a positive number.")
+    return fvalue
 
 
 def parse_args() -> argparse.Namespace:
@@ -84,4 +100,35 @@ def parse_args() -> argparse.Namespace:
             "overrides --alert-sound."
         ),
     )
+    parser.add_argument(
+        "--alert-after-seconds",
+        type=positive_float,
+        default=ALERT_NO_BLINK_SECONDS,
+        help=(
+            "Seconds without a blink before playing an alert "
+            f"(default: {ALERT_NO_BLINK_SECONDS})."
+        ),
+    )
+    parser.add_argument(
+        "--alert-repeat-seconds",
+        type=positive_float,
+        default=ALERT_REPEAT_SECONDS,
+        help=(
+            "Seconds to wait between alert sounds when no blink is detected "
+            f"(default: {ALERT_REPEAT_SECONDS})."
+        ),
+    )
+    parser.add_argument(
+        "--disable-alerts",
+        action="store_true",
+        help="Disable audio alerts when no blink is detected.",
+    )
+    # Backwards compatibility with earlier CLI that defaulted to alerts-disabled.
+    parser.add_argument(
+        "--enable-alerts",
+        action="store_true",
+        dest="enable_alerts",
+        help="Enable audio alerts when no blink is detected.",
+    )
+    parser.set_defaults(enable_alerts=False)
     return parser.parse_args()

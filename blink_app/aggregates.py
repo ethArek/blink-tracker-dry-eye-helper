@@ -50,19 +50,22 @@ def update_aggregates(
         return
     state.last_stats_time = now_ts
 
-    if (
-        now_ts - blink_state.last_blink_time >= ALERT_NO_BLINK_SECONDS
-        and now_ts - state.last_alert_time >= ALERT_REPEAT_SECONDS
-    ):
-        alert_sound = getattr(args, "alert_sound", "exclamation")
-        alert_sound_file = getattr(args, "alert_sound_file", None)
-        if alert_sound_file or (alert_sound and str(alert_sound).lower() != "none"):
-            logging.getLogger("app").warning(
-                "No blink detected for %ds. Playing alert.",
-                int(now_ts - blink_state.last_blink_time),
-            )
-            play_alert_sound(sound=str(alert_sound), sound_file=alert_sound_file)
-            state.last_alert_time = now_ts
+    if getattr(args, "enable_alerts", False):
+        alert_after_seconds = getattr(args, "alert_after_seconds", ALERT_NO_BLINK_SECONDS)
+        alert_repeat_seconds = getattr(args, "alert_repeat_seconds", ALERT_REPEAT_SECONDS)
+        if (
+            now_ts - blink_state.last_blink_time >= alert_after_seconds
+            and now_ts - state.last_alert_time >= alert_repeat_seconds
+        ):
+            alert_sound = getattr(args, "alert_sound", "exclamation")
+            alert_sound_file = getattr(args, "alert_sound_file", None)
+            if alert_sound_file or (alert_sound and str(alert_sound).lower() != "none"):
+                logging.getLogger("app").warning(
+                    "No blink detected for %ds. Playing alert.",
+                    int(now_ts - blink_state.last_blink_time),
+                )
+                play_alert_sound(sound=str(alert_sound), sound_file=alert_sound_file)
+                state.last_alert_time = now_ts
 
     date_str = now_dt.strftime("%Y-%m-%d")
 
