@@ -22,6 +22,9 @@ from blink_app.render import render_overlay
 class CameraResult(TypedDict):
     error: str | None
     cap: cv2.VideoCapture | None
+    backend: str | None
+    open_seconds: float | None
+    first_frame_seconds: float | None
 
 
 def main() -> None:
@@ -44,23 +47,69 @@ def main() -> None:
 
     cap: cv2.VideoCapture | None = None
     camera_ready = threading.Event()
-    camera_result: CameraResult = {"error": None, "cap": None}
+    camera_result: CameraResult = {
+        "error": None,
+        "cap": None,
+        "backend": None,
+        "open_seconds": None,
+        "first_frame_seconds": None,
+    }
 
     def open_camera() -> None:
-        local_cap = None
         try:
-            local_cap = cv2.VideoCapture(args.camera_index)
-            if not local_cap.isOpened():
-                camera_result["error"] = "Cannot open camera."
-                local_cap.release()
+            backends: list[tuple[str, int | None]] = []
+            if hasattr(cv2, "CAP_DSHOW"):
+                backends.append(("DSHOW", cv2.CAP_DSHOW))
+            backends.append(("DEFAULT", None))
+
+            last_error: str | None = None
+            for backend_name, backend_id in backends:
+                open_start = time.perf_counter()
+                local_cap = (
+                    cv2.VideoCapture(args.camera_index, backend_id)
+                    if backend_id is not None
+                    else cv2.VideoCapture(args.camera_index)
+                )
+                open_seconds = time.perf_counter() - open_start
+
+                if not local_cap.isOpened():
+                    last_error = f"backend={backend_name} open={open_seconds:.2f}s isOpened=False"
+                    local_cap.release()
+                    continue
+
+                if args.fps is not None:
+                    local_cap.set(cv2.CAP_PROP_FPS, args.fps)
+
+                first_frame_start = time.perf_counter()
+                got_frame = False
+                for _ in range(60):  # ~3s worst-case warmup at 50ms
+                    ret, _frame = local_cap.read()
+                    if ret:
+                        got_frame = True
+                        break
+                    time.sleep(0.05)
+                first_frame_seconds = time.perf_counter() - first_frame_start
+
+                if not got_frame:
+                    last_error = (
+                        f"backend={backend_name} open={open_seconds:.2f}s "
+                        f"first_frame>{first_frame_seconds:.2f}s"
+                    )
+                    local_cap.release()
+                    continue
+
+                camera_result["cap"] = local_cap
+                camera_result["backend"] = backend_name
+                camera_result["open_seconds"] = open_seconds
+                camera_result["first_frame_seconds"] = first_frame_seconds
                 return
-            if args.fps is not None:
-                local_cap.set(cv2.CAP_PROP_FPS, args.fps)
-            camera_result["cap"] = local_cap
+
+            camera_result["error"] = (
+                "Cannot open camera / get first frame."
+                + (f" Last attempt: {last_error}" if last_error else "")
+            )
         except Exception as e:
             camera_result["error"] = f"Camera initialization error: {e}"
-            if local_cap is not None:
-                local_cap.release()
         finally:
             camera_ready.set()
 
@@ -134,12 +183,22 @@ def main() -> None:
         db_conn.close()
         sys.exit(1)
 
+    if camera_result["backend"] is not None:
+        app_logger.info(
+            "Camera initialized (backend=%s, open=%.2fs, first_frame=%.2fs).",
+            camera_result["backend"],
+            camera_result["open_seconds"] or 0.0,
+            camera_result["first_frame_seconds"] or 0.0,
+        )
+
+    face_mesh_start = time.perf_counter()
     mp_face_mesh = mp.solutions.face_mesh
     face_mesh = mp_face_mesh.FaceMesh(
         static_image_mode=False,
         max_num_faces=1,
         refine_landmarks=True,
     )
+    app_logger.info("FaceMesh initialized in %.2fs.", time.perf_counter() - face_mesh_start)
 
     app_logger.info("Camera started. Press ESC or Ctrl+C to exit.")
 
