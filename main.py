@@ -95,9 +95,9 @@ def main() -> None:
                 output_dir,
             )
 
-            render_overlay(frame, aggregate_state)
+            rendered = render_overlay(frame, aggregate_state, blink_state, now_ts)
 
-            cv2.imshow("Blink detection", frame)
+            cv2.imshow("Blink detection", rendered)
             if cv2.waitKey(1) & 0xFF == 27:
                 break
 
