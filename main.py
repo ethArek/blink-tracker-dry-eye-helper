@@ -1,6 +1,12 @@
 import cv2
 import mediapipe as mp
 import math
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import threading
 import time
 from datetime import datetime, timedelta
 
@@ -23,11 +29,62 @@ RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 # Thresholds
 EAR_THRESHOLD = 0.21
 EAR_CONSEC_FRAMES = 3
+ALERT_NO_BLINK_SECONDS = 30
+ALERT_REPEAT_SECONDS = 30
 
 frame_counter = 0
 blink_counter = 0
 blink_timestamps = []       # datetime
 blink_timestamps_day = []   # float (timestamp)
+
+# Play a sound alert when no blink is detected for a while
+def play_alert_sound():
+    def _play():
+        if platform.system() == "Windows":
+            try:
+                import winsound
+                winsound.Beep(1000, 500)
+                return
+            except Exception:
+                pass
+
+        if platform.system() == "Darwin":
+            mac_sound = "/System/Library/Sounds/Glass.aiff"
+            if shutil.which("afplay") and os.path.exists(mac_sound):
+                subprocess.Popen(
+                    ["afplay", mac_sound],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return
+
+        if shutil.which("paplay"):
+            for sound_path in (
+                "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga",
+                "/usr/share/sounds/freedesktop/stereo/complete.oga",
+            ):
+                if os.path.exists(sound_path):
+                    subprocess.Popen(
+                        ["paplay", sound_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    return
+
+        if shutil.which("aplay"):
+            for sound_path in ("/usr/share/sounds/alsa/Front_Center.wav",):
+                if os.path.exists(sound_path):
+                    subprocess.Popen(
+                        ["aplay", sound_path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    return
+
+        sys.stdout.write("\a")
+        sys.stdout.flush()
+
+    threading.Thread(target=_play, daemon=True).start()
 
 # Count blinks in a given time range
 def count_blinks_in_range(blinks, start: datetime, end: datetime) -> int:
@@ -50,6 +107,8 @@ last_stats_time = time.time()
 last_logged_minute = None
 last_logged_10minute = None
 last_logged_hour = None
+last_blink_time = time.time()
+last_alert_time = 0.0
 
 # Values to show on screen
 blinks_1m = 0
@@ -89,12 +148,20 @@ try:
                         blink_counter += 1
                         blink_timestamps.append(now_dt)
                         blink_timestamps_day.append(now_ts)
+                        last_blink_time = now_ts
                         print(f"Blink #{blink_counter}")
                     frame_counter = 0
 
         # Every second: check if it's time to log full intervals
         if time.time() - last_stats_time >= 1.0:
             last_stats_time = time.time()
+
+            if (
+                now_ts - last_blink_time >= ALERT_NO_BLINK_SECONDS
+                and now_ts - last_alert_time >= ALERT_REPEAT_SECONDS
+            ):
+                play_alert_sound()
+                last_alert_time = now_ts
 
             # Filter old data
             blink_timestamps = [t for t in blink_timestamps if (now_dt - t).total_seconds() <= 3600]
