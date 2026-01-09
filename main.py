@@ -41,22 +41,33 @@ def main() -> None:
     camera_result: dict[str, str | cv2.VideoCapture | None] = {"error": None, "cap": None}
 
     def open_camera() -> None:
-        local_cap = cv2.VideoCapture(args.camera_index)
-        if not local_cap.isOpened():
-            camera_result["error"] = "Cannot open camera."
+        local_cap = None
+        try:
+            local_cap = cv2.VideoCapture(args.camera_index)
+            if not local_cap.isOpened():
+                camera_result["error"] = "Cannot open camera."
+                if local_cap is not None:
+                    local_cap.release()
+                camera_ready.set()
+                return
+            if args.fps is not None:
+                local_cap.set(cv2.CAP_PROP_FPS, args.fps)
+            camera_result["cap"] = local_cap
+        except Exception as e:
+            camera_result["error"] = f"Camera initialization error: {e}"
+            if local_cap is not None:
+                local_cap.release()
+        finally:
             camera_ready.set()
-            return
-        if args.fps is not None:
-            local_cap.set(cv2.CAP_PROP_FPS, args.fps)
-        camera_result["cap"] = local_cap
-        camera_ready.set()
 
     app_logger.info("Starting blink detection. Initializing camera...")
     window_name = "Blink detection"
     cv2.namedWindow(window_name)
-    threading.Thread(target=open_camera, daemon=True).start()
+    camera_thread = threading.Thread(target=open_camera, daemon=False)
+    camera_thread.start()
 
     waiting_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    user_exit_during_init = False
     while not camera_ready.is_set():
         frame = waiting_frame.copy()
         cv2.putText(
@@ -72,18 +83,37 @@ def main() -> None:
         cv2.imshow(window_name, frame)
         if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
             app_logger.info("Window closed during camera initialization.")
+            user_exit_during_init = True
             break
         if cv2.waitKey(50) & 0xFF == 27:
             app_logger.info("Exit requested during camera initialization.")
+            user_exit_during_init = True
             break
+
+    # Wait for the camera thread to complete
+    camera_thread.join()
+
+    # If user requested exit during initialization, clean up and exit
+    if user_exit_during_init:
+        cap = camera_result["cap"]
+        if cap is not None:
+            cap.release()
+        cv2.destroyAllWindows()
+        db_conn.close()
+        app_logger.info("Exited during initialization. Goodbye!")
+        sys.exit(0)
 
     if camera_result["error"]:
         app_logger.error("%s", camera_result["error"])
+        cv2.destroyAllWindows()
+        db_conn.close()
         sys.exit(1)
 
     cap = camera_result["cap"]
     if cap is None:
         app_logger.error("Camera did not initialize.")
+        cv2.destroyAllWindows()
+        db_conn.close()
         sys.exit(1)
 
     mp_face_mesh = mp.solutions.face_mesh
