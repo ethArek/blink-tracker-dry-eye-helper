@@ -18,6 +18,7 @@ class AggregateState:
     last_logged_10minute: datetime | None = None
     last_logged_hour: datetime | None = None
     last_logged_day: datetime | None = None
+    last_current_day_update: datetime | None = None
     last_alert_time: float = 0.0
     blinks_1m: int = 0
     blinks_10m: int = 0
@@ -149,15 +150,19 @@ def update_aggregates(
         )
         state.last_logged_day = previous_day_start
 
-    state.blinks_day = count_blinks_in_range(
-        db_conn,
-        current_day_start,
-        now_dt,
-    )
-    aggregate_logger.info("daily_total date=%s blinks=%d", date_str, state.blinks_day)
-    if args.csv_output:
-        write_csv_row(
-            os.path.join(output_dir, "blinks_per_day.csv"),
-            ["date", "blinks"],
-            [date_str, state.blinks_day],
+    # Update current day total every minute to avoid excessive DB queries and CSV writes
+    current_minute_for_day = now_dt.replace(second=0, microsecond=0)
+    if state.last_current_day_update != current_minute_for_day:
+        state.blinks_day = count_blinks_in_range(
+            db_conn,
+            current_day_start,
+            now_dt,
         )
+        aggregate_logger.info("daily_total date=%s blinks=%d", date_str, state.blinks_day)
+        if args.csv_output:
+            write_csv_row(
+                os.path.join(output_dir, "blinks_per_day.csv"),
+                ["date", "blinks"],
+                [date_str, state.blinks_day],
+            )
+        state.last_current_day_update = current_minute_for_day
