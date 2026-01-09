@@ -1,9 +1,10 @@
 import cv2
+import numpy as np
 
 from blink_app.aggregates import AggregateState
 
 
-def render_overlay(frame, state: AggregateState) -> None:
+def render_overlay(frame: np.ndarray, state: AggregateState) -> None:
     cv2.putText(
         frame,
         "Blinks (full intervals):",

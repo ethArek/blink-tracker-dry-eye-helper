@@ -3,12 +3,16 @@ import math
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
+from collections.abc import Sequence
 
 from blink_app.db import record_blink_event
 
 
-def eye_aspect_ratio(landmarks, eye_indices):
-    def euclidean(p1, p2):
+def eye_aspect_ratio(
+    landmarks: Sequence[tuple[float, float]],
+    eye_indices: Sequence[int],
+) -> float:
+    def euclidean(p1: tuple[float, float], p2: tuple[float, float]) -> float:
         return math.dist(p1, p2)
 
     p = [landmarks[i] for i in eye_indices]
