@@ -1,6 +1,6 @@
 import argparse
 
-from blink_app.constants import EAR_CONSEC_FRAMES, EAR_THRESHOLD
+from blink_app.constants import ALERT_SOUND, EAR_CONSEC_FRAMES, EAR_THRESHOLD
 
 
 def non_negative_int(value: str) -> int:
@@ -53,5 +53,35 @@ def parse_args() -> argparse.Namespace:
         "--db-path",
         default=None,
         help="Path to SQLite database for blink events (default: <output-dir>/blinks.db).",
+    )
+    parser.add_argument(
+        "--alert-sound",
+        choices=(
+            "exclamation",
+            "asterisk",
+            "hand",
+            "question",
+            "beep",
+            "glass",
+            "ping",
+            "pop",
+            "basso",
+            "tink",
+            "submarine",
+            "none",
+        ),
+        default=ALERT_SOUND,
+        help=(
+            "Alert sound to play when no blinks are detected for the configured interval "
+            f"(default: {ALERT_SOUND}). Use 'none' to disable."
+        ),
+    )
+    parser.add_argument(
+        "--alert-sound-file",
+        default=None,
+        help=(
+            "Path to a custom sound file (WAV/AIFF, best-effort) to play for alerts; "
+            "overrides --alert-sound."
+        ),
     )
     return parser.parse_args()

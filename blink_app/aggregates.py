@@ -1,5 +1,6 @@
 import argparse
 import csv
+import logging
 import os
 import sqlite3
 from dataclasses import dataclass
@@ -53,8 +54,15 @@ def update_aggregates(
         now_ts - blink_state.last_blink_time >= ALERT_NO_BLINK_SECONDS
         and now_ts - state.last_alert_time >= ALERT_REPEAT_SECONDS
     ):
-        play_alert_sound()
-        state.last_alert_time = now_ts
+        alert_sound = getattr(args, "alert_sound", "exclamation")
+        alert_sound_file = getattr(args, "alert_sound_file", None)
+        if alert_sound_file or (alert_sound and str(alert_sound).lower() != "none"):
+            logging.getLogger("app").warning(
+                "No blink detected for %ds. Playing alert.",
+                int(now_ts - blink_state.last_blink_time),
+            )
+            play_alert_sound(sound=str(alert_sound), sound_file=alert_sound_file)
+            state.last_alert_time = now_ts
 
     date_str = now_dt.strftime("%Y-%m-%d")
 
