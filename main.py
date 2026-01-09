@@ -70,6 +70,9 @@ def main() -> None:
             cv2.LINE_AA,
         )
         cv2.imshow(window_name, frame)
+        if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+            app_logger.info("Window closed during camera initialization.")
+            break
         if cv2.waitKey(50) & 0xFF == 27:
             app_logger.info("Exit requested during camera initialization.")
             break
@@ -140,6 +143,9 @@ def main() -> None:
             rendered = render_overlay(frame, aggregate_state, blink_state, now_ts)
 
             cv2.imshow(window_name, rendered)
+            if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                app_logger.info("Window closed by user.")
+                break
             if cv2.waitKey(1) & 0xFF == 27:
                 break
 
