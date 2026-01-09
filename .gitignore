@@ -1,4 +1,5 @@
 blinks*.txt
+blinks.db
 __pycache__/
 *.pyc
 *.pyo
