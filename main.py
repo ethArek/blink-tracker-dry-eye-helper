@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from datetime import datetime
+from typing import TypedDict
 
 import mediapipe as mp
 import numpy as np
@@ -16,6 +17,11 @@ from blink_app.db import init_db
 from blink_app.detection import BlinkState, eye_aspect_ratio
 from blink_app.logging_utils import setup_logging
 from blink_app.render import render_overlay
+
+
+class CameraResult(TypedDict):
+    error: str | None
+    cap: cv2.VideoCapture | None
 
 
 def main() -> None:
@@ -38,7 +44,7 @@ def main() -> None:
 
     cap: cv2.VideoCapture | None = None
     camera_ready = threading.Event()
-    camera_result: dict[str, str | cv2.VideoCapture | None] = {"error": None, "cap": None}
+    camera_result: CameraResult = {"error": None, "cap": None}
 
     def open_camera() -> None:
         local_cap = None
@@ -64,8 +70,18 @@ def main() -> None:
     camera_thread = threading.Thread(target=open_camera, daemon=False)
     camera_thread.start()
 
-    waiting_frame = np.zeros((480, 640, 3), dtype=np.uint8)
     user_exit_during_init = False
+    user_cancelled = False
+    try:
+        waiting_height = int(os.getenv("BLINK_APP_INIT_HEIGHT", "480"))
+    except (TypeError, ValueError):
+        waiting_height = 480
+    try:
+        waiting_width = int(os.getenv("BLINK_APP_INIT_WIDTH", "640"))
+    except (TypeError, ValueError):
+        waiting_width = 640
+
+    waiting_frame = np.zeros((waiting_height, waiting_width, 3), dtype=np.uint8)
     while not camera_ready.is_set():
         frame = waiting_frame.copy()
         cv2.putText(
@@ -99,6 +115,15 @@ def main() -> None:
         cv2.destroyAllWindows()
         db_conn.close()
         app_logger.info("Exited during initialization. Goodbye!")
+            user_cancelled = True
+            break
+        if cv2.waitKey(50) & 0xFF == 27:
+            app_logger.info("Exit requested during camera initialization.")
+            user_cancelled = True
+            break
+
+    if user_cancelled:
+        cv2.destroyAllWindows()
         sys.exit(0)
 
     if camera_result["error"]:
