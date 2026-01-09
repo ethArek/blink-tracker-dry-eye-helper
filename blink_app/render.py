@@ -53,16 +53,6 @@ def render_overlay(
         add_text(title, (left + padding, top + 28), (0, 255, 255), 0.62)
         return top + 45
 
-    def draw_button(origin: tuple[int, int], size: tuple[int, int], label: str) -> None:
-        x, y = origin
-        w, h = size
-        cv2.rectangle(panel, (x, y), (x + w, y + h), (80, 80, 95), -1)
-        cv2.rectangle(panel, (x, y), (x + w, y + h), (120, 120, 140), 2)
-        text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)[0]
-        text_x = x + (w - text_size[0]) // 2
-        text_y = y + (h + text_size[1]) // 2
-        add_text(label, (text_x, text_y), (240, 240, 240), 0.55)
-
     add_text("Blink Monitor", (20, 30), (0, 255, 255), 0.75)
     add_text(f"Session blinks: {blink_state.blink_counter}", (20, 60))
     add_text(
@@ -77,27 +67,6 @@ def render_overlay(
     add_text(f"1 hour: {state.blinks_1h}", (28, stats_cursor + 55))
     add_text(f"Today:  {state.blinks_day}", (28, stats_cursor + 80))
 
-    charts_top = stats_top + 160
-    charts_cursor = draw_section_box(charts_top, 160, "Charts")
-    chart_left = 28
-    chart_top = charts_cursor + 10
-    chart_width = panel_width - 56
-    chart_height = 80
-    cv2.rectangle(
-        panel,
-        (chart_left, chart_top),
-        (chart_left + chart_width, chart_top + chart_height),
-        (90, 90, 110),
-        2,
-    )
-    add_text("Placeholder chart", (chart_left + 12, chart_top + 45), (160, 160, 180), 0.55)
-
-    filters_top = charts_top + 180
-    draw_section_box(filters_top, 170, "Filters")
-    draw_button((28, filters_top + 55), (140, 42), "Last 5 min")
-    draw_button((190, filters_top + 55), (140, 42), "Last hour")
-    draw_button((28, filters_top + 110), (140, 42), "Today")
-    draw_button((190, filters_top + 110), (140, 42), "All time")
 
     combined = np.hstack((frame, panel))
     return combined
