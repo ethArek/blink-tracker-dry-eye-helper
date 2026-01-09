@@ -1,3 +1,4 @@
+import argparse
 import cv2
 import mediapipe as mp
 import math
@@ -36,6 +37,48 @@ frame_counter = 0
 blink_counter = 0
 blink_timestamps = []       # datetime
 blink_timestamps_day = []   # float (timestamp)
+
+def non_negative_int(value: str) -> int:
+    try:
+        ivalue = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid integer value: {value}") from exc
+    if ivalue < 0:
+        raise argparse.ArgumentTypeError("Camera index must be a non-negative integer.")
+    return ivalue
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Detect blinks and log blink counts.")
+    parser.add_argument(
+        "--camera-index",
+        type=non_negative_int,
+        default=0,
+        help="Camera index to open (must be a non-negative integer, default: 0).",
+    )
+    parser.add_argument(
+        "--ear-threshold",
+        type=float,
+        default=EAR_THRESHOLD,
+        help=f"EAR threshold for blink detection (default: {EAR_THRESHOLD}).",
+    )
+    parser.add_argument(
+        "--ear-consec-frames",
+        type=int,
+        default=EAR_CONSEC_FRAMES,
+        help=f"Consecutive frames below threshold to count a blink (default: {EAR_CONSEC_FRAMES}).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=".",
+        help="Directory to store blink logs (default: current directory).",
+    )
+    parser.add_argument(
+        "--fps",
+        type=float,
+        default=None,
+        help="Requested capture FPS (default: camera default).",
+    )
+    return parser.parse_args()
 
 # Play a sound alert when no blink is detected for a while
 def play_alert_sound():
@@ -109,15 +152,31 @@ def play_alert_sound():
 def count_blinks_in_range(blinks, start: datetime, end: datetime) -> int:
     return sum(1 for t in blinks if start <= t <= end)
 
+args = parse_args()
+EAR_THRESHOLD = args.ear_threshold
+EAR_CONSEC_FRAMES = args.ear_consec_frames
+
+output_dir = args.output_dir
+try:
+    os.makedirs(output_dir, exist_ok=True)
+except OSError as e:
+    print(f"Error: could not create output directory '{output_dir}': {e}", file=sys.stderr)
+    sys.exit(1)
+
+def output_path(filename: str) -> str:
+    return os.path.join(output_dir, filename)
+
 # Init mediapipe
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
 
 # Init camera
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(args.camera_index)
 if not cap.isOpened():
     print("Cannot open camera.")
     exit()
+if args.fps is not None:
+    cap.set(cv2.CAP_PROP_FPS, args.fps)
 
 print("Camera started. Press ESC or Ctrl+C to exit.")
 
@@ -195,7 +254,7 @@ try:
             current_minute = now_dt.replace(second=0, microsecond=0) - timedelta(minutes=1)
             if last_logged_minute != current_minute:
                 blinks_1m = count_blinks_in_range(blink_timestamps, current_minute, current_minute + timedelta(minutes=1) - timedelta(seconds=1))
-                with open("blinks_per_minute.txt", "a") as f:
+                with open(output_path("blinks_per_minute.txt"), "a") as f:
                     f.write(f"{date_str} {current_minute.strftime('%H:%M:%S')} - {blinks_1m}\n")
                 last_logged_minute = current_minute
 
@@ -204,7 +263,7 @@ try:
             current_10minute = now_dt.replace(minute=now_dt.minute - minute_mod, second=0, microsecond=0) - timedelta(minutes=10)
             if last_logged_10minute != current_10minute:
                 blinks_10m = count_blinks_in_range(blink_timestamps, current_10minute, current_10minute + timedelta(minutes=10) - timedelta(seconds=1))
-                with open("blinks_per_10_minutes.txt", "a") as f:
+                with open(output_path("blinks_per_10_minutes.txt"), "a") as f:
                     f.write(f"{date_str} {current_10minute.strftime('%H:%M:%S')} - {blinks_10m}\n")
                 last_logged_10minute = current_10minute
 
@@ -212,7 +271,7 @@ try:
             current_hour = now_dt.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
             if last_logged_hour != current_hour:
                 blinks_1h = count_blinks_in_range(blink_timestamps, current_hour, current_hour + timedelta(hours=1) - timedelta(seconds=1))
-                with open("blinks_per_hour.txt", "a") as f:
+                with open(output_path("blinks_per_hour.txt"), "a") as f:
                     f.write(f"{date_str} {current_hour.strftime('%H:%M:%S')} - {blinks_1h}\n")
                 last_logged_hour = current_hour
 
@@ -221,7 +280,7 @@ try:
             day_line = f"{date_str} - {blinks_day}\n"
 
             try:
-                with open("blinks_per_day.txt", "r") as f:
+                with open(output_path("blinks_per_day.txt"), "r") as f:
                     lines = f.readlines()
             except FileNotFoundError:
                 lines = []
@@ -236,7 +295,7 @@ try:
             if not found:
                 lines.append(day_line)
 
-            with open("blinks_per_day.txt", "w") as f:
+            with open(output_path("blinks_per_day.txt"), "w") as f:
                 f.writelines(lines)
 
         # Display info on camera frame
