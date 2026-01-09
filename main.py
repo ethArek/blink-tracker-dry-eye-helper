@@ -39,6 +39,25 @@ blink_timestamps_day = []   # float (timestamp)
 
 # Play a sound alert when no blink is detected for a while
 def play_alert_sound():
+    """
+    Play an alert sound asynchronously using a best-effort, platform-specific backend.
+
+    The sound is played in a separate daemon thread so that calls to this function
+    are non-blocking and do not interrupt the main video-processing loop.
+
+    Platform behavior:
+      * Windows: use ``winsound.Beep`` if available.
+      * macOS (Darwin): use ``afplay`` to play the system ``Glass.aiff`` sound if
+        the command and sound file are present.
+      * Linux/other Unix-like systems:
+          - Prefer ``paplay`` (PulseAudio) with common freedesktop sound files, if
+            both the command and at least one sound file exist.
+          - Otherwise, try ``aplay`` (ALSA) with a common system sound file.
+
+    If no platform-specific method succeeds, the function falls back to writing the
+    ASCII bell character (``\\a``) to standard output to trigger a terminal beep
+    when supported.
+    """
     def _play():
         if platform.system() == "Windows":
             try:
@@ -107,6 +126,11 @@ last_stats_time = time.time()
 last_logged_minute = None
 last_logged_10minute = None
 last_logged_hour = None
+# NOTE: These time-tracking variables are written from the main thread only.
+# Background threads may read them, and we currently rely on CPython's GIL and
+# simple float assignments being effectively atomic. If more complex, compound
+# operations are added in the future, protect access with a threading.Lock or
+# another explicit synchronization mechanism.
 last_blink_time = time.time()
 last_alert_time = 0.0
 
