@@ -247,7 +247,13 @@ def main() -> None:
                 output_dir,
             )
 
-            rendered = render_overlay(frame, aggregate_state, blink_state, now_ts)
+            rendered = render_overlay(
+                frame,
+                aggregate_state,
+                blink_state,
+                now_ts,
+                args.enable_alerts,
+            )
 
             cv2.imshow(window_name, rendered)
             key = cv2.waitKey(1) & 0xFF
