@@ -126,7 +126,7 @@ def render_overlay(
         ),
     )
 
-    add_text("Press ESC to exit • Data", (18, cursor + 6), (170, 175, 190), 0.52, 1)
+    add_text("Press Esc or close window • Data", (18, cursor + 6), (170, 175, 190), 0.52, 1)
     add_text("saved locally", (18, cursor + 30), (170, 175, 190), 0.52, 1)
 
     combined = np.hstack((frame, panel))

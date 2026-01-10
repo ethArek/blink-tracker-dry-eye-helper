@@ -9,12 +9,12 @@ export aggregates for analysis.
 
 - Python 3.10+ (uses modern type annotations).
 - A working webcam and permission to access it.
-- A graphical desktop session (OpenCV opens a live preview window).
+- A graphical desktop session (Qt opens a live preview window).
 
-Python packages:
+Python packages (see `requirements.txt`):
 
 ```bash
-pip install mediapipe opencv-python numpy
+pip install -r requirements.txt
 ```
 
 ## Installation
@@ -22,7 +22,7 @@ pip install mediapipe opencv-python numpy
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install mediapipe opencv-python numpy
+pip install -r requirements.txt
 ```
 
 ## Usage
