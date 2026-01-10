@@ -294,7 +294,7 @@ class BlinkWindow(QtWidgets.QMainWindow):
         if self._frame_timer is not None:
             self._frame_timer.stop()
         if self._camera_thread.is_alive():
-            self._camera_thread.join(timeout=1.0)
+            self._camera_thread.join(timeout=10.0)
         if self._face_mesh is not None:
             self._face_mesh.close()
         if self._cap is not None:
