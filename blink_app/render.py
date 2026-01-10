@@ -57,7 +57,13 @@ def render_overlay(
         cv2.rectangle(panel, (left, top), (right, top + height_px), (70, 74, 88), 2)
         add_text(title, (left + 16, top + 26), (200, 205, 220), 0.6, 1)
         if value is not None:
-            value_x = right - 14 - int(len(value) * 10)
+            (value_width, _), _ = cv2.getTextSize(
+                value,
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.72,
+                2,
+            )
+            value_x = right - 14 - value_width
             add_text(value, (value_x, top + 32), value_color, 0.72, 2)
         if right_drawer is not None:
             right_drawer(left, right, top, height_px)
@@ -94,7 +100,7 @@ def render_overlay(
         )
         knob_x = track_left + track_width - radius if enabled else track_left + radius
         cv2.circle(panel, (knob_x, track_top + radius), radius - 2, knob_color, -1)
-        cv2.circle(panel, (knob_x, track_top + radius), radius - 2, (60, 60, 70), 1)
+        cv2.circle(panel, (knob_x, track_top + radius), radius - 2, (70, 74, 88), 1)
 
     add_text("Blink Tracker — Live Preview", (18, 34), (210, 230, 255), 0.62, 2)
 

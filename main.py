@@ -252,7 +252,7 @@ def main() -> None:
                 aggregate_state,
                 blink_state,
                 now_ts,
-                bool(getattr(args, "enable_alerts", False)),
+                args.enable_alerts,
             )
 
             cv2.imshow(window_name, rendered)
