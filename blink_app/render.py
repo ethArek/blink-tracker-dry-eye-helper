@@ -47,7 +47,7 @@ def render_overlay(
         top: int,
         title: str,
         value: str | None,
-        value_color: tuple[int, int, int],
+        value_color: tuple[int, int, int] | None = None,
         right_drawer: Callable[[int, int, int, int], None] | None = None,
     ) -> int:
         left = 14
@@ -56,7 +56,7 @@ def render_overlay(
         cv2.rectangle(panel, (left, top), (right, top + height_px), (42, 46, 56), -1)
         cv2.rectangle(panel, (left, top), (right, top + height_px), (70, 74, 88), 2)
         add_text(title, (left + 16, top + 26), (200, 205, 220), 0.6, 1)
-        if value is not None:
+        if value is not None and value_color is not None:
             (value_width, _), _ = cv2.getTextSize(
                 value,
                 cv2.FONT_HERSHEY_SIMPLEX,
@@ -117,7 +117,6 @@ def render_overlay(
         cursor,
         "Reminder",
         None,
-        (255, 255, 255),
         right_drawer=lambda left, right, top, height_px: draw_toggle(
             left,
             right,
