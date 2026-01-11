@@ -12,12 +12,12 @@ import mediapipe as mp
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from blink_app.aggregates import AggregateState, update_aggregates
+from blink_app.domain.aggregates import AggregateState, update_aggregates
 from blink_app.cli import parse_args
 from blink_app.constants import ALERT_NO_BLINK_SECONDS, LEFT_EYE, RIGHT_EYE
-from blink_app.db import init_db
-from blink_app.detection import BlinkState, eye_aspect_ratio
-from blink_app.logging_utils import setup_logging
+from blink_app.services.db import init_db
+from blink_app.domain.detection import BlinkState, eye_aspect_ratio
+from blink_app.services.logging_utils import setup_logging
 
 
 class CameraResult(TypedDict):

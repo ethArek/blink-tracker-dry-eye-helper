@@ -3,8 +3,8 @@ from collections.abc import Callable
 import cv2
 import numpy as np
 
-from blink_app.aggregates import AggregateState
-from blink_app.detection import BlinkState
+from blink_app.domain.aggregates import AggregateState
+from blink_app.domain.detection import BlinkState
 
 
 def _format_last_blink(last_blink_time: float, now_ts: float) -> str:

@@ -6,10 +6,10 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from blink_app.alert import play_alert_sound
+from blink_app.services.alert import play_alert_sound
 from blink_app.constants import ALERT_NO_BLINK_SECONDS, ALERT_REPEAT_SECONDS
-from blink_app.db import count_blinks_in_range, record_aggregate
-from blink_app.detection import BlinkState
+from blink_app.services.db import count_blinks_in_range, record_aggregate
+from blink_app.domain.detection import BlinkState
 
 
 @dataclass

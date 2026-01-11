@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
 
-from blink_app.db import init_db, record_aggregate
+from blink_app.services.db import init_db, record_aggregate
 
 
 class DatabaseAggregatesTest(unittest.TestCase):
