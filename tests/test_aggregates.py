@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from datetime import datetime
 
-from blink_app.aggregates import AggregateState, update_aggregates
-from blink_app.db import init_db, record_blink_event
-from blink_app.detection import BlinkState
+from blink_app.domain.aggregates import AggregateState, update_aggregates
+from blink_app.services.db import init_db, record_blink_event
+from blink_app.domain.detection import BlinkState
 
 
 class UpdateAggregatesTest(unittest.TestCase):

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from collections.abc import Sequence
 
-from blink_app.db import record_blink_event
+from blink_app.services.db import record_blink_event
 
 
 def eye_aspect_ratio(
