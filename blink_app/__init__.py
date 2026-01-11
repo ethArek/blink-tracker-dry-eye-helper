@@ -1,1 +1,1 @@
-"""Blink detection application package."""
+"""Blink tracker application package."""

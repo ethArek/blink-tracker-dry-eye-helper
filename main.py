@@ -1,6 +1,7 @@
 import cv2
 import logging
 import os
+import signal
 import sys
 import threading
 import time
@@ -13,7 +14,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from blink_app.aggregates import AggregateState, update_aggregates
 from blink_app.cli import parse_args
-from blink_app.constants import LEFT_EYE, RIGHT_EYE
+from blink_app.constants import ALERT_NO_BLINK_SECONDS, LEFT_EYE, RIGHT_EYE
 from blink_app.db import init_db
 from blink_app.detection import BlinkState, eye_aspect_ratio
 from blink_app.logging_utils import setup_logging
@@ -26,6 +27,57 @@ class CameraResult(TypedDict):
     open_seconds: float | None
     first_frame_seconds: float | None
 
+
+class ToggleSwitch(QtWidgets.QCheckBox):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(52, 28)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.setCheckable(True)
+        self.setText("")
+
+    def sizeHint(self) -> QtCore.QSize:
+        return QtCore.QSize(52, 28)
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
+        track_rect = QtCore.QRectF(1, 1, self.width() - 2, self.height() - 2)
+        track_radius = track_rect.height() / 2
+        knob_diameter = track_rect.height() - 6
+        knob_y = track_rect.top() + 3
+        if self.isChecked():
+            knob_x = track_rect.right() - knob_diameter - 3
+            track_color = QtGui.QColor("#4aa3ff")
+            border_color = QtGui.QColor("#3f8fe0")
+        else:
+            knob_x = track_rect.left() + 3
+            track_color = QtGui.QColor("#2b3142")
+            border_color = QtGui.QColor("#3a4257")
+
+        if not self.isEnabled():
+            track_color = QtGui.QColor("#1d2332")
+            border_color = QtGui.QColor("#242c3f")
+
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(QtGui.QPen(border_color, 1))
+        painter.setBrush(QtGui.QBrush(track_color))
+        painter.drawRoundedRect(track_rect, track_radius, track_radius)
+
+        knob_rect = QtCore.QRectF(knob_x, knob_y, knob_diameter, knob_diameter)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#1d2332"), 1))
+        painter.setBrush(QtGui.QBrush(QtGui.QColor("#f6f7fb")))
+        painter.drawEllipse(knob_rect)
+
+        painter.end()
+
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.toggle()
+            event.accept()
+            return
+
+        super().mouseReleaseEvent(event)
 
 class BlinkWindow(QtWidgets.QMainWindow):
     def __init__(
@@ -63,8 +115,11 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._blink_state = BlinkState(last_blink_time=time.time())
         self._aggregate_state = AggregateState(last_stats_time=time.time())
         self._alerts_enabled = bool(getattr(args, "enable_alerts", False))
+        self._alert_after_input: QtWidgets.QDoubleSpinBox | None = None
+        self._minute_table: QtWidgets.QTableWidget | None = None
+        self._last_minute_table_refresh: datetime | None = None
 
-        self.setWindowTitle("Blink detection")
+        self.setWindowTitle("Blink Tracker")
         self._video_label = QtWidgets.QLabel(alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
         self._video_label.setMinimumSize(640, 480)
         self._video_label.setStyleSheet("background-color: #0f1116; border-radius: 12px;")
@@ -126,21 +181,118 @@ class BlinkWindow(QtWidgets.QMainWindow):
                 font-size: 14px;
                 font-weight: 600;
             }
-            QCheckBox#AlertToggle::indicator {
-                width: 46px;
-                height: 24px;
-                border-radius: 12px;
-                background-color: #2b3142;
-                border: 1px solid #3a4257;
+            QSpinBox, QDoubleSpinBox {
+                background-color: #1a2130;
+                color: #f6f7fb;
+                border: 1px solid #242c3f;
+                border-radius: 8px;
+                padding: 2px 6px;
             }
-            QCheckBox#AlertToggle::indicator:checked {
-                background-color: #42d37d;
-                border: 1px solid #3fd072;
+            QTabWidget::pane {
+                border: 0;
+            }
+            QTabBar::tab {
+                background-color: #131823;
+                color: #a3aec2;
+                padding: 8px 12px;
+                border: 1px solid #1d2332;
+                border-bottom: none;
+                border-top-left-radius: 10px;
+                border-top-right-radius: 10px;
+                min-width: 80px;
+            }
+            QTabBar::tab:selected {
+                background-color: #1a2130;
+                color: #f6f7fb;
+                border-color: #242c3f;
+            }
+            QTabWidget::tab-bar {
+                left: 10px;
+            }
+            QTableWidget {
+                background-color: #1a2130;
+                color: #f6f7fb;
+                gridline-color: #242c3f;
+                border: 1px solid #242c3f;
+                border-radius: 10px;
+            }
+            QTableWidget::item {
+                color: #f6f7fb;
+                background-color: #1a2130;
+            }
+            QTableWidget::item:alternate {
+                background-color: #161c27;
+            }
+            QTableWidget::item:selected {
+                background-color: #2a3550;
+                color: #f6f7fb;
+            }
+            QHeaderView::section {
+                background-color: #131823;
+                color: #a3aec2;
+                border: 1px solid #242c3f;
+                padding: 4px 6px;
+            }
+            QScrollBar:vertical {
+                background: #131823;
+                width: 10px;
+                margin: 2px;
+                border: 1px solid #1d2332;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background: #2a3550;
+                min-height: 20px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #334264;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+                width: 0px;
+            }
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: none;
+            }
+            QScrollBar:horizontal {
+                background: #131823;
+                height: 10px;
+                margin: 2px;
+                border: 1px solid #1d2332;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:horizontal {
+                background: #2a3550;
+                min-width: 20px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background: #334264;
+            }
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {
+                height: 0px;
+                width: 0px;
+            }
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
+                background: none;
             }
             """
         )
 
     def _build_side_panel(self) -> QtWidgets.QWidget:
+        tabs = QtWidgets.QTabWidget()
+        tabs.setMinimumWidth(320)
+        tabs.setMaximumWidth(360)
+        tabs.addTab(self._build_stats_panel(), "Stats")
+        tabs.addTab(self._build_minute_panel(), "Per-minute")
+        return tabs
+
+    def _build_stats_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QFrame()
         panel.setObjectName("StatsPanel")
         panel.setMinimumWidth(320)
@@ -193,6 +345,47 @@ class BlinkWindow(QtWidgets.QMainWindow):
         panel_layout.addWidget(footer)
         return panel
 
+    def _build_minute_panel(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QFrame()
+        panel.setObjectName("StatsPanel")
+        panel.setMinimumWidth(320)
+        panel.setMaximumWidth(360)
+
+        panel_layout = QtWidgets.QVBoxLayout(panel)
+        panel_layout.setContentsMargins(18, 18, 18, 18)
+        panel_layout.setSpacing(12)
+
+        title = QtWidgets.QLabel("Per-minute blinks")
+        title.setObjectName("PanelTitle")
+        subtitle = QtWidgets.QLabel("Most recent first")
+        subtitle.setObjectName("PanelSubtitle")
+        panel_layout.addWidget(title)
+        panel_layout.addWidget(subtitle)
+
+        table = QtWidgets.QTableWidget()
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["Minute", "Blinks"])
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        table.setAlternatingRowColors(True)
+        table.setSortingEnabled(False)
+        table.horizontalHeader().setStretchLastSection(False)
+        table.horizontalHeader().setSectionResizeMode(
+            0,
+            QtWidgets.QHeaderView.ResizeMode.Stretch,
+        )
+        table.horizontalHeader().setSectionResizeMode(
+            1,
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents,
+        )
+
+        self._minute_table = table
+        panel_layout.addWidget(table, stretch=1)
+        self._refresh_minute_table()
+        return panel
+
     def _build_stat_card(
         self,
         layout: QtWidgets.QVBoxLayout,
@@ -231,10 +424,42 @@ class BlinkWindow(QtWidgets.QMainWindow):
         label_stack.addWidget(title_label)
         label_stack.addWidget(self._alert_status_label)
 
-        self._alert_toggle = QtWidgets.QCheckBox()
+        alert_row = QtWidgets.QWidget()
+        alert_row_layout = QtWidgets.QHBoxLayout(alert_row)
+        alert_row_layout.setContentsMargins(0, 0, 0, 0)
+        alert_row_layout.setSpacing(8)
+        alert_after_label = QtWidgets.QLabel("After")
+        alert_after_label.setObjectName("CardTitle")
+        alert_suffix_label = QtWidgets.QLabel("(s) without blinking")
+        alert_suffix_label.setObjectName("CardTitle")
+        self._alert_after_input = QtWidgets.QDoubleSpinBox()
+        self._alert_after_input.setDecimals(1)
+        self._alert_after_input.setSingleStep(1.0)
+        self._alert_after_input.setRange(0.1, 86400.0)
+        self._alert_after_input.setFixedWidth(65)
+        self._alert_after_input.setValue(
+            max(
+                0.1,
+                float(
+                    getattr(
+                        self._args,
+                        "alert_after_seconds",
+                        ALERT_NO_BLINK_SECONDS,
+                    )
+                ),
+            )
+        )
+        self._alert_after_input.valueChanged.connect(self._update_alert_after_seconds)
+        alert_row_layout.addWidget(alert_after_label)
+        alert_row_layout.addWidget(self._alert_after_input)
+        alert_row_layout.addWidget(alert_suffix_label)
+        alert_row_layout.addStretch()
+        label_stack.addWidget(alert_row)
+
+        self._alert_toggle = ToggleSwitch()
         self._alert_toggle.setObjectName("AlertToggle")
         self._alert_toggle.setChecked(self._alerts_enabled)
-        self._alert_toggle.stateChanged.connect(self._toggle_alerts)
+        self._alert_toggle.toggled.connect(self._toggle_alerts)
 
         card_layout.addLayout(label_stack)
         card_layout.addStretch()
@@ -242,16 +467,19 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._refresh_alert_status()
         return card
 
-    def _toggle_alerts(self, state: int) -> None:
-        self._alerts_enabled = state == QtCore.Qt.CheckState.Checked
-        self._args.enable_alerts = self._alerts_enabled
+    def _toggle_alerts(self, enabled: bool) -> None:
+        self._alerts_enabled = enabled
+        self._args.enable_alerts = enabled
         self._refresh_alert_status()
+
+    def _update_alert_after_seconds(self, value: float) -> None:
+        self._args.alert_after_seconds = float(value)
 
     def _refresh_alert_status(self) -> None:
         if self._alerts_enabled:
-            self._alert_status_label.setText("Enabled")
+            self._alert_status_label.setText("Alerts ON")
         else:
-            self._alert_status_label.setText("Muted")
+            self._alert_status_label.setText("Alerts OFF")
 
     @staticmethod
     def _format_last_blink(last_blink_time: float, now_ts: float) -> str:
@@ -389,6 +617,8 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._frame_timer.start(30)
 
     def _update_frame(self) -> None:
+        if self._closing:
+            return
         if self._cap is None or self._face_mesh is None:
             return
         ret, frame = self._cap.read()
@@ -399,7 +629,14 @@ class BlinkWindow(QtWidgets.QMainWindow):
 
         h, w = frame.shape[:2]
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self._face_mesh.process(rgb)
+        try:
+            results = self._face_mesh.process(rgb)
+        except ValueError:
+            if self._closing:
+                return
+            self._app_logger.exception("FaceMesh processing failed.")
+            self.close()
+            return
         now_dt = datetime.now()
         now_ts = time.time()
 
@@ -433,6 +670,7 @@ class BlinkWindow(QtWidgets.QMainWindow):
         )
 
         self._update_stats_panel(now_ts)
+        self._refresh_minute_table_if_needed()
         self._show_frame(frame)
 
     def _update_stats_panel(self, now_ts: float) -> None:
@@ -443,6 +681,50 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._blinks_per_minute_value.setText(str(self._aggregate_state.blinks_1m))
         self._blinks_per_hour_value.setText(str(self._aggregate_state.blinks_1h))
         self._blinks_today_value.setText(str(self._aggregate_state.blinks_day))
+
+    def _refresh_minute_table_if_needed(self) -> None:
+        if self._minute_table is None:
+            return
+
+        last_logged_minute = self._aggregate_state.last_logged_minute
+        if last_logged_minute is None:
+            if self._minute_table.rowCount() == 0:
+                self._refresh_minute_table()
+            return
+
+        if self._last_minute_table_refresh == last_logged_minute:
+            return
+
+        self._refresh_minute_table()
+        self._last_minute_table_refresh = last_logged_minute
+
+    def _refresh_minute_table(self) -> None:
+        if self._minute_table is None:
+            return
+
+        cursor = self._db_conn.execute(
+            """
+            SELECT interval_start, blink_count
+            FROM blink_aggregates
+            WHERE interval_type = ?
+            ORDER BY interval_start DESC
+            """,
+            ("minute",),
+        )
+        rows = cursor.fetchall()
+        self._minute_table.setRowCount(len(rows))
+        for row_index, (interval_start, blink_count) in enumerate(rows):
+            time_item = QtWidgets.QTableWidgetItem(str(interval_start))
+            time_item.setTextAlignment(
+                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+            )
+            count_item = QtWidgets.QTableWidgetItem(str(blink_count))
+            count_item.setTextAlignment(
+                QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
+            )
+            self._minute_table.setItem(row_index, 0, time_item)
+            self._minute_table.setItem(row_index, 1, count_item)
+        self._minute_table.resizeRowsToContents()
 
     def _show_frame(self, frame: np.ndarray) -> None:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -507,6 +789,12 @@ def main() -> None:
     app_logger.info("Starting blink detection. Initializing camera...")
 
     app = QtWidgets.QApplication(sys.argv)
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, lambda *_: app.quit())
+    signal_timer = QtCore.QTimer()
+    signal_timer.timeout.connect(lambda: None)
+    signal_timer.start(250)
     window = BlinkWindow(
         args,
         output_dir,

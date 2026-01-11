@@ -66,6 +66,7 @@ Press **ESC** or close the window to exit (Ctrl+C also works in the terminal).
 - **`--ear-consec-frames`**: Increase to avoid false positives, decrease for quicker
   detection if you blink rapidly.
 - **`--alert-after-seconds`**: Time without a blink before an alert plays.
+  You can also adjust this live in the app under the Alerts card ("After").
 - **`--alert-repeat-seconds`**: How often to repeat alerts while no blinks are detected.
 - **`--disable-alerts`**: Turn off audio alerts.
 - **`--alert-sound`**: Choose the alert sound (default: `exclamation`).
@@ -125,7 +126,8 @@ Alerts are enabled by default. Use `--disable-alerts` to turn them off.
 If no blink is detected for 30 seconds, the app plays a reminder sound and repeats
 every 30 seconds until a blink is detected. You can tune the timing with
 `--alert-after-seconds` and `--alert-repeat-seconds`, and change the sound with
-`--alert-sound` or `--alert-sound-file`. On systems without audio
+`--alert-sound` or `--alert-sound-file`. You can also adjust the "After" value
+live from the Alerts card in the app window. On systems without audio
 playback tools, it falls back to a terminal bell.
 
 ## Troubleshooting
