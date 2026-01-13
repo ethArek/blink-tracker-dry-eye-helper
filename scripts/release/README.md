@@ -29,7 +29,7 @@ Platform-specific dependencies:
 
 The scripts emit installers into `dist/release`:
 
-- Windows: `dist/release/DryEyeBlink.exe`
+- Windows: `dist/release/DryEyeBlink/` (folder containing `DryEyeBlink.exe`)
 - macOS: `dist/release/DryEyeBlink.dmg`
 - Linux: `dist/release/DryEyeBlink.AppImage`
 
@@ -37,9 +37,9 @@ The scripts emit installers into `dist/release`:
 
 Run the script that matches your operating system:
 
-```bash
+```powershell
 # Windows (PowerShell)
-./scripts/release/build_windows.ps1
+.\scripts\release\build_windows.ps1
 
 # macOS (bash/zsh)
 ./scripts/release/build_macos.sh
@@ -48,6 +48,12 @@ Run the script that matches your operating system:
 ./scripts/release/build_linux_appimage.sh
 ```
 
+If you see a "permission denied" error when running the `.sh` scripts, either:
+
+- Make them executable once:
+
+  ```bash
+  chmod +x scripts/release/build_macos.sh scripts/release/build_linux_appimage.sh
 Each script cleans previous `build/` and `dist/` directories before rebuilding.
 
 ## Verification note

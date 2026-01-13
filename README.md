@@ -137,7 +137,7 @@ to build the executable and then package platform installers (EXE, DMG, AppImage
 
 ```bash
 # Windows (PowerShell)
-./scripts/release/build_windows.ps1
+.\scripts\release\build_windows.ps1
 
 # macOS
 ./scripts/release/build_macos.sh
