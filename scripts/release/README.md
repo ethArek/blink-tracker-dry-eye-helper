@@ -9,6 +9,13 @@ Dry Eye Blink Detector.
 - `pip install -r requirements.txt`
 - `pip install pyinstaller`
 
+PyInstaller notes:
+
+- The scripts include a baseline set of PyInstaller flags to bundle the app icon
+  and include MediaPipe as a hidden import.
+- If you hit runtime errors (missing Qt plugins or MediaPipe data), add additional
+  `--hidden-import` or `--add-data` entries in the platform script.
+
 Platform-specific dependencies:
 
 - **Windows:** no extra tools required beyond PyInstaller.

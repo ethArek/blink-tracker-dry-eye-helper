@@ -19,7 +19,14 @@ fi
 
 rm -rf build dist
 
-python -m pyinstaller --noconfirm --name "DryEyeBlink" --onedir main.py
+python -m pyinstaller \
+  --noconfirm \
+  --name "DryEyeBlink" \
+  --onedir \
+  --icon "scripts/release/linux/DryEyeBlink.svg" \
+  --add-data "scripts/release/linux/DryEyeBlink.svg:scripts/release/linux" \
+  --hidden-import "mediapipe" \
+  main.py
 
 APPDIR="dist/appimage/DryEyeBlink.AppDir"
 DESKTOP_FILE="scripts/release/linux/DryEyeBlink.desktop"

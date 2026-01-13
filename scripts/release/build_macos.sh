@@ -11,7 +11,14 @@ fi
 
 rm -rf build dist
 
-python -m pyinstaller --noconfirm --windowed --name "DryEyeBlink" main.py
+python -m pyinstaller \
+  --noconfirm \
+  --windowed \
+  --name "DryEyeBlink" \
+  --icon "scripts/release/linux/DryEyeBlink.svg" \
+  --add-data "scripts/release/linux/DryEyeBlink.svg:scripts/release/linux" \
+  --hidden-import "mediapipe" \
+  main.py
 
 mkdir -p dist/release
 hdiutil create \
