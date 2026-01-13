@@ -130,6 +130,25 @@ every 30 seconds until a blink is detected. You can tune the timing with
 live from the Alerts card in the app window. On systems without audio
 playback tools, it falls back to a terminal bell.
 
+## Release installers
+
+Platform-specific release scripts live in `scripts/release`. They use PyInstaller
+to build the executable and then package platform installers (EXE, DMG, AppImage).
+
+```bash
+# Windows (PowerShell)
+./scripts/release/build_windows.ps1
+
+# macOS
+./scripts/release/build_macos.sh
+
+# Linux (AppImage)
+./scripts/release/build_linux_appimage.sh
+```
+
+The installers are staged under `dist/release`. For more details and dependencies,
+see `scripts/release/README.md`.
+
 ## Troubleshooting
 
 - **Camera will not open**: Try a different `--camera-index`, close other apps using
