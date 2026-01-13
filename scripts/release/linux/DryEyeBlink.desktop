@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Dry Eye Blink Detector
+Comment=Detect and monitor eye blink rate to help reduce dry-eye strain
+Exec=DryEyeBlink
+Icon=DryEyeBlink
+Terminal=false
+Type=Application
+Categories=Utility;Health;
