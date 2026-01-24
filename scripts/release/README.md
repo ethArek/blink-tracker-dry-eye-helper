@@ -18,7 +18,7 @@ PyInstaller notes:
 
 Platform-specific dependencies:
 
-- **Windows:** no extra tools required beyond PyInstaller.
+- **Windows:** Inno Setup 6 is optional if you want a `Setup.exe` installer.
 - **macOS:** `hdiutil` (ships with macOS).
 - **Linux (AppImage):**
   - `appimagetool` (https://github.com/AppImage/AppImageKit)
@@ -29,7 +29,7 @@ Platform-specific dependencies:
 
 The scripts emit installers into `dist/release`:
 
-- Windows: `dist/release/DryEyeBlink/` (folder containing `DryEyeBlink.exe`)
+- Windows: `dist/release/DryEyeBlink/` (folder containing `DryEyeBlink.exe`), plus `dist/release/DryEyeBlinkSetup.exe` if Inno Setup is installed
 - macOS: `dist/release/DryEyeBlink.dmg`
 - Linux: `dist/release/DryEyeBlink.AppImage`
 
@@ -47,6 +47,13 @@ Run the script that matches your operating system:
 # Linux (bash)
 ./scripts/release/build_linux_appimage.sh
 ```
+
+## Windows icon note
+
+Windows executables require an `.ico` file for `--icon`. If a PNG exists at
+`scripts/release/windows/DryEyeBlink.png`, the Windows build script renders it
+to `scripts/release/windows/DryEyeBlink.ico` automatically (using `PySide6`).
+Otherwise it falls back to the SVG at `scripts/release/linux/DryEyeBlink.svg`.
 
 If you see a "permission denied" error when running the `.sh` scripts, either:
 
