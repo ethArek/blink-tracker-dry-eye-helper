@@ -104,7 +104,7 @@ def main() -> int:
     parser.add_argument(
         "--svg",
         type=Path,
-        default=Path("scripts/release/linux/DryEyeBlink.svg"),
+        default=Path("scripts/release/linux/BlinkTracker.svg"),
         help="Path to source SVG (ignored if --png is set).",
     )
     parser.add_argument(
@@ -115,7 +115,7 @@ def main() -> int:
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path("scripts/release/windows/DryEyeBlink.ico"),
+        default=Path("scripts/release/windows/BlinkTracker.ico"),
         help="Path to output .ico.",
     )
     parser.add_argument(

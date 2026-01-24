@@ -1,6 +1,6 @@
-# Dry Eye Blink Detector
+# Blink Tracker
 
-The Dry Eye Blink Detector is a webcam-based blink monitor that uses MediaPipe FaceMesh
+Blink Tracker is a webcam-based blink monitor that uses MediaPipe FaceMesh
 to estimate eye aspect ratio (EAR) and track blink frequency over time. It provides a
 live preview with session stats, writes structured logs, stores data in SQLite, and can
 export aggregates for analysis.

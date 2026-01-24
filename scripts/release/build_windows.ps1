@@ -5,7 +5,7 @@ Set-Location (Join-Path $scriptDir "..\..")
 
 if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
 if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
-if (Test-Path "DryEyeBlink.spec") { Remove-Item -Force "DryEyeBlink.spec" }
+if (Test-Path "BlinkTracker.spec") { Remove-Item -Force "BlinkTracker.spec" }
 
 $PythonExe = "python"
 if (Test-Path ".venv\\Scripts\\python.exe") {
@@ -21,13 +21,13 @@ $PyInstallerArgs = @(
   "--noconfirm",
   "--clean",
   "--windowed",
-  "--name", "DryEyeBlink",
+  "--name", "BlinkTracker",
   "--hidden-import", "mediapipe"
 )
 
-$WindowsIconPath = "scripts\\release\\windows\\DryEyeBlink.ico"
-$WindowsPngPath = "scripts\\release\\windows\\DryEyeBlink.png"
-$LinuxSvgPath = "scripts\\release\\linux\\DryEyeBlink.svg"
+$WindowsIconPath = "scripts\\release\\windows\\BlinkTracker.ico"
+$WindowsPngPath = "scripts\\release\\windows\\BlinkTracker.png"
+$LinuxSvgPath = "scripts\\release\\linux\\BlinkTracker.svg"
 $IconScriptPath = "scripts\\release\\windows\\make_ico_from_svg.py"
 
 if (Test-Path $WindowsPngPath) {
@@ -64,23 +64,23 @@ if ($LASTEXITCODE -ne 0) {
 New-Item -ItemType Directory -Force -Path "dist\release" | Out-Null
 
 $ReleaseOutputPath = $null
-if (Test-Path "dist\\DryEyeBlink") {
-  Copy-Item -Path "dist\\DryEyeBlink" -Destination "dist\\release\\DryEyeBlink" -Recurse -Force
-  $ReleaseOutputPath = "dist\\release\\DryEyeBlink"
-} elseif (Test-Path "dist\\DryEyeBlink.exe") {
-  Copy-Item -Path "dist\\DryEyeBlink.exe" -Destination "dist\\release\\DryEyeBlink.exe" -Force
-  $ReleaseOutputPath = "dist\\release\\DryEyeBlink.exe"
+if (Test-Path "dist\\BlinkTracker") {
+  Copy-Item -Path "dist\\BlinkTracker" -Destination "dist\\release\\BlinkTracker" -Recurse -Force
+  $ReleaseOutputPath = "dist\\release\\BlinkTracker"
+} elseif (Test-Path "dist\\BlinkTracker.exe") {
+  Copy-Item -Path "dist\\BlinkTracker.exe" -Destination "dist\\release\\BlinkTracker.exe" -Force
+  $ReleaseOutputPath = "dist\\release\\BlinkTracker.exe"
 } else {
-  throw "PyInstaller did not produce 'dist\\DryEyeBlink\\' or 'dist\\DryEyeBlink.exe'. Check the build output for errors."
+  throw "PyInstaller did not produce 'dist\\BlinkTracker\\' or 'dist\\BlinkTracker.exe'. Check the build output for errors."
 }
 
-if ($ReleaseOutputPath -like "*DryEyeBlink.exe") {
-  Write-Host "PyInstaller output staged at dist\\release\\DryEyeBlink.exe"
+if ($ReleaseOutputPath -like "*BlinkTracker.exe") {
+  Write-Host "PyInstaller output staged at dist\\release\\BlinkTracker.exe"
 } else {
-  Write-Host "PyInstaller output staged at dist\\release\\DryEyeBlink\\DryEyeBlink.exe"
+  Write-Host "PyInstaller output staged at dist\\release\\BlinkTracker\\BlinkTracker.exe"
 }
 
-$InnoScriptPath = "scripts\\release\\windows\\DryEyeBlink.iss"
+$InnoScriptPath = "scripts\\release\\windows\\BlinkTracker.iss"
 $IsccExe = $null
 $IsccCommand = Get-Command "iscc.exe" -ErrorAction SilentlyContinue
 if ($IsccCommand) {
@@ -104,8 +104,8 @@ if ($IsccExe -and (Test-Path $InnoScriptPath)) {
     throw "Inno Setup build failed (exit code $LASTEXITCODE)."
   }
 
-  if (Test-Path "dist\\release\\DryEyeBlinkSetup.exe") {
-    Write-Host "Installer staged at dist\\release\\DryEyeBlinkSetup.exe"
+  if (Test-Path "dist\\release\\BlinkTrackerSetup.exe") {
+    Write-Host "Installer staged at dist\\release\\BlinkTrackerSetup.exe"
   } else {
     Write-Host "Inno Setup finished; check dist\\release for the installer."
   }

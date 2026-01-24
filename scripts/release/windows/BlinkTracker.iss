@@ -1,10 +1,10 @@
-#define AppName "DryEyeBlink"
+#define AppName "Blink Tracker"
 #define AppVersion "1.0.0"
-#define AppPublisher "Dry Eye Blink Detector"
-#define AppExeName "DryEyeBlink.exe"
+#define AppPublisher "Blink Tracker"
+#define AppExeName "BlinkTracker.exe"
 #define RepoRoot "..\\..\\.."
 #define ReleaseDir RepoRoot + "\\dist\\release"
-#define IconPath RepoRoot + "\\scripts\\release\\windows\\DryEyeBlink.ico"
+#define IconPath RepoRoot + "\\scripts\\release\\windows\\BlinkTracker.ico"
 
 [Setup]
 AppId={{B2B13869-4EA5-474B-9F47-684B8EDE6F32}}
@@ -15,7 +15,7 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 OutputDir={#ReleaseDir}
-OutputBaseFilename=DryEyeBlinkSetup
+OutputBaseFilename=BlinkTrackerSetup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -32,10 +32,10 @@ SetupIconFile={#IconPath}
 Name: "desktopicon"; Description: "Create a desktop icon"; Flags: unchecked
 
 [Files]
-#if DirExists(ReleaseDir + "\\DryEyeBlink")
-Source: "{#ReleaseDir}\\DryEyeBlink\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-#elif FileExists(ReleaseDir + "\\DryEyeBlink.exe")
-Source: "{#ReleaseDir}\\DryEyeBlink.exe"; DestDir: "{app}"; Flags: ignoreversion
+#if DirExists(ReleaseDir + "\\BlinkTracker")
+Source: "{#ReleaseDir}\\BlinkTracker\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+#elif FileExists(ReleaseDir + "\\BlinkTracker.exe")
+Source: "{#ReleaseDir}\\BlinkTracker.exe"; DestDir: "{app}"; Flags: ignoreversion
 #else
 #error "Build output not found. Run scripts\\release\\build_windows.ps1 first."
 #endif

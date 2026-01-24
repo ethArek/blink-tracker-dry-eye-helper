@@ -21,28 +21,28 @@ rm -rf build dist
 
 python -m pyinstaller \
   --noconfirm \
-  --name "DryEyeBlink" \
+  --name "BlinkTracker" \
   --onedir \
-  --icon "scripts/release/linux/DryEyeBlink.svg" \
-  --add-data "scripts/release/linux/DryEyeBlink.svg:scripts/release/linux" \
+  --icon "scripts/release/linux/BlinkTracker.svg" \
+  --add-data "scripts/release/linux/BlinkTracker.svg:scripts/release/linux" \
   --hidden-import "mediapipe" \
   main.py
 
-APPDIR="dist/appimage/DryEyeBlink.AppDir"
-DESKTOP_FILE="scripts/release/linux/DryEyeBlink.desktop"
-ICON_FILE="scripts/release/linux/DryEyeBlink.svg"
+APPDIR="dist/appimage/BlinkTracker.AppDir"
+DESKTOP_FILE="scripts/release/linux/BlinkTracker.desktop"
+ICON_FILE="scripts/release/linux/BlinkTracker.svg"
 
 rm -rf "$APPDIR"
 mkdir -p "dist/release"
 
 "$LINUXDEPLOY" \
   --appdir "$APPDIR" \
-  -e "dist/DryEyeBlink/DryEyeBlink" \
+  -e "dist/BlinkTracker/BlinkTracker" \
   -d "$DESKTOP_FILE" \
   -i "$ICON_FILE"
 
-"$APPIMAGETOOL" "$APPDIR" "dist/release/DryEyeBlink.AppImage"
+"$APPIMAGETOOL" "$APPDIR" "dist/release/BlinkTracker.AppImage"
 
-chmod +x "dist/release/DryEyeBlink.AppImage"
+chmod +x "dist/release/BlinkTracker.AppImage"
 
-echo "Installer staged at dist/release/DryEyeBlink.AppImage"
+echo "Installer staged at dist/release/BlinkTracker.AppImage"

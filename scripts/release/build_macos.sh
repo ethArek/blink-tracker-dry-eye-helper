@@ -14,18 +14,18 @@ rm -rf build dist
 python -m pyinstaller \
   --noconfirm \
   --windowed \
-  --name "DryEyeBlink" \
-  --icon "scripts/release/linux/DryEyeBlink.svg" \
-  --add-data "scripts/release/linux/DryEyeBlink.svg:scripts/release/linux" \
+  --name "BlinkTracker" \
+  --icon "scripts/release/linux/BlinkTracker.svg" \
+  --add-data "scripts/release/linux/BlinkTracker.svg:scripts/release/linux" \
   --hidden-import "mediapipe" \
   main.py
 
 mkdir -p dist/release
 hdiutil create \
-  -volname "Dry Eye Blink" \
-  -srcfolder "dist/DryEyeBlink.app" \
+  -volname "Blink Tracker" \
+  -srcfolder "dist/BlinkTracker.app" \
   -ov \
   -format UDZO \
-  "dist/release/DryEyeBlink.dmg"
+  "dist/release/BlinkTracker.dmg"
 
-echo "Installer staged at dist/release/DryEyeBlink.dmg"
+echo "Installer staged at dist/release/BlinkTracker.dmg"

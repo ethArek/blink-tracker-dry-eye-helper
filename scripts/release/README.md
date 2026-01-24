@@ -1,7 +1,7 @@
 # Release installers
 
 This folder contains platform-specific scripts to build release installers for
-Dry Eye Blink Detector.
+Blink Tracker.
 
 ## Prerequisites
 
@@ -29,9 +29,9 @@ Platform-specific dependencies:
 
 The scripts emit installers into `dist/release`:
 
-- Windows: `dist/release/DryEyeBlink/` (folder containing `DryEyeBlink.exe`), plus `dist/release/DryEyeBlinkSetup.exe` if Inno Setup is installed
-- macOS: `dist/release/DryEyeBlink.dmg`
-- Linux: `dist/release/DryEyeBlink.AppImage`
+- Windows: `dist/release/BlinkTracker/` (folder containing `BlinkTracker.exe`), plus `dist/release/BlinkTrackerSetup.exe` if Inno Setup is installed
+- macOS: `dist/release/BlinkTracker.dmg`
+- Linux: `dist/release/BlinkTracker.AppImage`
 
 ## Usage
 
@@ -51,9 +51,9 @@ Run the script that matches your operating system:
 ## Windows icon note
 
 Windows executables require an `.ico` file for `--icon`. If a PNG exists at
-`scripts/release/windows/DryEyeBlink.png`, the Windows build script renders it
-to `scripts/release/windows/DryEyeBlink.ico` automatically (using `PySide6`).
-Otherwise it falls back to the SVG at `scripts/release/linux/DryEyeBlink.svg`.
+`scripts/release/windows/BlinkTracker.png`, the Windows build script renders it
+to `scripts/release/windows/BlinkTracker.ico` automatically (using `PySide6`).
+Otherwise it falls back to the SVG at `scripts/release/linux/BlinkTracker.svg`.
 
 If you see a "permission denied" error when running the `.sh` scripts, either:
 
