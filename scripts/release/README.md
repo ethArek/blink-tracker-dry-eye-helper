@@ -61,6 +61,8 @@ If you see a "permission denied" error when running the `.sh` scripts, either:
 
   ```bash
   chmod +x scripts/release/build_macos.sh scripts/release/build_linux_appimage.sh
+  ```
+
 Each script cleans previous `build/` and `dist/` directories before rebuilding.
 
 ## Verification note
