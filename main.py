@@ -2,7 +2,9 @@ import cv2
 import logging
 import os
 import signal
+import sqlite3
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -134,7 +136,7 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._apply_theme()
 
         self._waiting_frame = self._build_waiting_frame()
-        self._camera_thread = threading.Thread(target=self._open_camera, daemon=False)
+        self._camera_thread = threading.Thread(target=self._open_camera, daemon=True)
         self._camera_thread.start()
 
         self._init_timer = QtCore.QTimer(self)
@@ -631,7 +633,7 @@ class BlinkWindow(QtWidgets.QMainWindow):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         try:
             results = self._face_mesh.process(rgb)
-        except ValueError:
+        except Exception:
             if self._closing:
                 return
             self._app_logger.exception("FaceMesh processing failed.")
@@ -759,6 +761,8 @@ class BlinkWindow(QtWidgets.QMainWindow):
             self._frame_timer.stop()
         if self._camera_thread.is_alive():
             self._camera_thread.join(timeout=10.0)
+            if self._camera_thread.is_alive():
+                self._app_logger.warning("Camera initialization thread did not stop cleanly.")
         if self._face_mesh is not None:
             self._face_mesh.close()
         if self._cap is not None:
@@ -768,23 +772,52 @@ class BlinkWindow(QtWidgets.QMainWindow):
         super().closeEvent(event)
 
 
-def main() -> None:
+def ensure_writable_directory(path: str) -> str:
+    absolute_path = os.path.abspath(path)
+    os.makedirs(absolute_path, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=absolute_path, delete=True):
+        pass
+    return absolute_path
+
+
+def resolve_db_path(output_dir: str, db_path_arg: str | None) -> str:
+    if db_path_arg:
+        db_path = os.path.abspath(db_path_arg)
+    else:
+        db_path = os.path.join(output_dir, "blinks.db")
+
+    if os.path.isdir(db_path):
+        raise IsADirectoryError(f"Database path is a directory: {db_path}")
+
+    db_parent = os.path.dirname(db_path)
+    if db_parent:
+        os.makedirs(db_parent, exist_ok=True)
+
+    return db_path
+
+
+def main() -> int:
     args = parse_args()
-    output_dir = args.output_dir
     try:
-        os.makedirs(output_dir, exist_ok=True)
-    except OSError as e:
+        output_dir = ensure_writable_directory(args.output_dir)
+    except OSError as exc:
         logging.basicConfig(level=logging.INFO)
         logging.getLogger("app").error(
-            "Could not create output directory '%s': %s",
-            output_dir,
-            e,
+            "Could not prepare output directory '%s': %s",
+            args.output_dir,
+            exc,
         )
-        sys.exit(1)
+        return 1
 
     app_logger, blink_logger, aggregate_logger = setup_logging(output_dir)
-    db_path = args.db_path or os.path.join(output_dir, "blinks.db")
-    db_conn = init_db(db_path)
+
+    db_path = ""
+    try:
+        db_path = resolve_db_path(output_dir, args.db_path)
+        db_conn = init_db(db_path)
+    except (OSError, sqlite3.Error) as exc:
+        app_logger.error("Could not initialize database '%s': %s", db_path or args.db_path, exc)
+        return 1
 
     app_logger.info("Starting blink detection. Initializing camera...")
 
@@ -792,20 +825,28 @@ def main() -> None:
     signal.signal(signal.SIGINT, lambda *_: app.quit())
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, lambda *_: app.quit())
+
     signal_timer = QtCore.QTimer()
     signal_timer.timeout.connect(lambda: None)
     signal_timer.start(250)
-    window = BlinkWindow(
-        args,
-        output_dir,
-        app_logger,
-        blink_logger,
-        aggregate_logger,
-        db_conn,
-    )
+
+    try:
+        window = BlinkWindow(
+            args,
+            output_dir,
+            app_logger,
+            blink_logger,
+            aggregate_logger,
+            db_conn,
+        )
+    except Exception:
+        db_conn.close()
+        app_logger.exception("Application startup failed.")
+        return 1
+
     window.show()
-    sys.exit(app.exec())
+    return app.exec()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

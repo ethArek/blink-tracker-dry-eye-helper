@@ -28,7 +28,7 @@ class AggregateState:
 
 
 def write_csv_row(path: str, headers: list[str], row: list[object]) -> None:
-    with open(path, "a", newline="") as csvfile:
+    with open(path, "a", newline="", encoding="utf-8") as csvfile:
         writer = csv.writer(csvfile)
         # Write headers if the file is empty (new or truncated).
         if csvfile.tell() == 0:
