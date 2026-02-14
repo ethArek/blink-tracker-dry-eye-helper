@@ -1,7 +1,12 @@
 import unittest
 from datetime import datetime
 
-from blink_app.services.db import init_db, record_aggregate
+from blink_app.services.db import (
+    count_blinks_in_range,
+    init_db,
+    record_aggregate,
+    record_blink_event,
+)
 
 
 class DatabaseAggregatesTest(unittest.TestCase):
@@ -20,6 +25,19 @@ class DatabaseAggregatesTest(unittest.TestCase):
         row = cursor.fetchone()
         self.assertIsNotNone(row)
         self.assertEqual(row[0], 7)
+
+    def test_count_blinks_in_range_is_inclusive(self) -> None:
+        db_conn = init_db(":memory:")
+        start = datetime(2024, 1, 1, 10, 0, 0)
+        end = datetime(2024, 1, 1, 10, 0, 59)
+
+        record_blink_event(db_conn, start)
+        record_blink_event(db_conn, datetime(2024, 1, 1, 10, 0, 30))
+        record_blink_event(db_conn, end)
+        record_blink_event(db_conn, datetime(2024, 1, 1, 10, 1, 0))
+
+        count = count_blinks_in_range(db_conn, start, end)
+        self.assertEqual(count, 3)
 
 
 if __name__ == "__main__":

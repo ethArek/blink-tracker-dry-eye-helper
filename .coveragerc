@@ -1,0 +1,13 @@
+[run]
+source =
+    blink_app
+    export_blinks
+omit =
+    blink_app/domain/__init__.py
+    blink_app/services/__init__.py
+    blink_app/services/alert.py
+    blink_app/ui/*
+
+[report]
+fail_under = 90
+show_missing = True

@@ -4,6 +4,7 @@ import logging
 import tempfile
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 from blink_app.domain.aggregates import AggregateState, update_aggregates
 from blink_app.services.db import init_db, record_blink_event
@@ -78,6 +79,62 @@ class UpdateAggregatesTest(unittest.TestCase):
             with open(f"{tmp_dir}/blinks_per_day.csv", newline="") as handle:
                 rows = list(csv.reader(handle))
             self.assertEqual(rows[1], ["2024-01-02", "9"])
+
+    def test_update_aggregates_returns_early_when_called_too_soon(self) -> None:
+        now_dt = datetime(2024, 1, 2, 12, 34, 56)
+        now_ts = 1704198896.0
+        state = AggregateState(last_stats_time=now_ts - 0.2)
+        blink_state = BlinkState(last_blink_time=now_ts - 10.0)
+        args = argparse.Namespace(csv_output=False, enable_alerts=False)
+
+        db_conn = init_db(":memory:")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            update_aggregates(
+                args=args,
+                state=state,
+                now_dt=now_dt,
+                now_ts=now_ts,
+                blink_state=blink_state,
+                db_conn=db_conn,
+                aggregate_logger=self.logger,
+                output_dir=tmp_dir,
+            )
+        self.assertIsNone(state.last_logged_minute)
+        self.assertEqual(state.last_stats_time, now_ts - 0.2)
+
+    def test_update_aggregates_plays_alert_when_enabled(self) -> None:
+        now_dt = datetime(2024, 1, 2, 12, 34, 56)
+        now_ts = 1704198896.0
+        state = AggregateState(
+            last_stats_time=now_ts - 2.0,
+            last_alert_time=now_ts - 60.0,
+        )
+        blink_state = BlinkState(last_blink_time=now_ts - 20.0)
+        args = argparse.Namespace(
+            csv_output=False,
+            enable_alerts=True,
+            alert_after_seconds=5.0,
+            alert_repeat_seconds=5.0,
+            alert_sound="beep",
+            alert_sound_file=None,
+        )
+
+        db_conn = init_db(":memory:")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch("blink_app.domain.aggregates.play_alert_sound") as alert_mock:
+                update_aggregates(
+                    args=args,
+                    state=state,
+                    now_dt=now_dt,
+                    now_ts=now_ts,
+                    blink_state=blink_state,
+                    db_conn=db_conn,
+                    aggregate_logger=self.logger,
+                    output_dir=tmp_dir,
+                )
+                alert_mock.assert_called_once_with(sound="beep", sound_file=None)
+
+        self.assertEqual(state.last_alert_time, now_ts)
 
 
 if __name__ == "__main__":
