@@ -1,4 +1,4 @@
-mediapipe
-numpy
-opencv-python
-PySide6
+mediapipe>=0.10.14,<0.11
+numpy>=1.26.4,<2.0
+opencv-python>=4.10.0.84,<5.0
+PySide6>=6.8.2.1,<7.0
