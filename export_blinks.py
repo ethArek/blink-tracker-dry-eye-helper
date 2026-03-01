@@ -38,13 +38,23 @@ def export_rows_to_csv(path: str, headers: Iterable[str], rows: Iterable[tuple])
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(headers)
-        writer.writerows(rows)
+        for row in rows:
+            writer.writerow(row)
 
 
 def export_rows_to_json(path: str, headers: Iterable[str], rows: Iterable[tuple]) -> None:
-    payload = [dict(zip(headers, row)) for row in rows]
+    headers_tuple = tuple(headers)
     with open(path, "w", encoding="utf-8") as jsonfile:
-        json.dump(payload, jsonfile, indent=2)
+        jsonfile.write("[\n")
+        is_first = True
+        for row in rows:
+            if is_first:
+                is_first = False
+            else:
+                jsonfile.write(",\n")
+            jsonfile.write("  ")
+            json.dump(dict(zip(headers_tuple, row)), jsonfile)
+        jsonfile.write("\n]\n")
 
 
 def export_table(
@@ -54,14 +64,13 @@ def export_table(
     fmt: str,
 ) -> None:
     cursor = conn.execute(f"SELECT * FROM {table_name} ORDER BY id ASC")
-    rows = cursor.fetchall()
     headers = [col[0] for col in cursor.description]
     filename = f"{table_name}.{fmt}"
     path = os.path.join(output_dir, filename)
     if fmt == "csv":
-        export_rows_to_csv(path, headers, rows)
+        export_rows_to_csv(path, headers, cursor)
     else:
-        export_rows_to_json(path, headers, rows)
+        export_rows_to_json(path, headers, cursor)
 
 
 def main(argv: list[str] | None = None) -> int:

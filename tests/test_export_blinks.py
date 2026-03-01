@@ -37,6 +37,13 @@ class ExportBlinksTest(unittest.TestCase):
                     datetime(2024, 1, 1, 11, 59, 59),
                     1,
                 )
+                record_aggregate(
+                    db_conn,
+                    "minute",
+                    datetime(2024, 1, 1, 12, 0, 0),
+                    datetime(2024, 1, 1, 12, 0, 59),
+                    2,
+                )
             finally:
                 db_conn.close()
 
@@ -81,7 +88,7 @@ class ExportBlinksTest(unittest.TestCase):
             aggregates_json_path = os.path.join(tmp_dir, "blink_aggregates.json")
             with open(aggregates_json_path, encoding="utf-8") as handle:
                 payload = json.load(handle)
-            self.assertEqual(len(payload), 1)
+            self.assertEqual(len(payload), 2)
             self.assertEqual(payload[0]["interval_type"], "minute")
 
 
