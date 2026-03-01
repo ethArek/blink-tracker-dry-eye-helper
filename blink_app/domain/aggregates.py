@@ -51,8 +51,16 @@ def update_aggregates(
     state.last_stats_time = now_ts
 
     if getattr(args, "enable_alerts", False):
-        alert_after_seconds = getattr(args, "alert_after_seconds", ALERT_NO_BLINK_SECONDS)
-        alert_repeat_seconds = getattr(args, "alert_repeat_seconds", ALERT_REPEAT_SECONDS)
+        alert_after_seconds = max(
+            0.1,
+            float(getattr(args, "alert_after_seconds", ALERT_NO_BLINK_SECONDS)),
+        )
+        # update_aggregates executes at most once per second, so values below
+        # one second only increase alert churn without practical benefit.
+        alert_repeat_seconds = max(
+            1.0,
+            float(getattr(args, "alert_repeat_seconds", ALERT_REPEAT_SECONDS)),
+        )
         if (
             now_ts - blink_state.last_blink_time >= alert_after_seconds
             and now_ts - state.last_alert_time >= alert_repeat_seconds

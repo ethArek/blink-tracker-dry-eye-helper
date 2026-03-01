@@ -5,6 +5,31 @@ import subprocess
 import sys
 import threading
 
+_ALERT_THREAD_LOCK = threading.Lock()
+_ALERT_THREAD: threading.Thread | None = None
+
+_ALERT_PROCESS_LOCK = threading.Lock()
+_ALERT_PROCESS: subprocess.Popen | None = None
+
+
+def _start_alert_process(command: list[str]) -> bool:
+    global _ALERT_PROCESS
+
+    with _ALERT_PROCESS_LOCK:
+        if _ALERT_PROCESS is not None and _ALERT_PROCESS.poll() is None:
+            return True
+
+        try:
+            _ALERT_PROCESS = subprocess.Popen(
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            return False
+
+    return True
+
 
 def play_alert_sound(sound: str = "exclamation", sound_file: str | None = None) -> None:
     """
@@ -28,6 +53,8 @@ def play_alert_sound(sound: str = "exclamation", sound_file: str | None = None) 
     ASCII bell character (``\\a``) to standard output to trigger a terminal beep
     when supported.
     """
+
+    global _ALERT_THREAD
 
     sound = (sound or "exclamation").strip().lower()
     sound_file = sound_file.strip() if isinstance(sound_file, str) else None
@@ -57,28 +84,16 @@ def play_alert_sound(sound: str = "exclamation", sound_file: str | None = None) 
                     pass
 
             if system == "Darwin" and shutil.which("afplay"):
-                subprocess.Popen(
-                    ["afplay", custom_path],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                return
+                if _start_alert_process(["afplay", custom_path]):
+                    return
 
             if shutil.which("paplay"):
-                subprocess.Popen(
-                    ["paplay", custom_path],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                return
+                if _start_alert_process(["paplay", custom_path]):
+                    return
 
             if shutil.which("aplay"):
-                subprocess.Popen(
-                    ["aplay", custom_path],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                return
+                if _start_alert_process(["aplay", custom_path]):
+                    return
 
         if system == "Windows":
             try:
@@ -135,12 +150,8 @@ def play_alert_sound(sound: str = "exclamation", sound_file: str | None = None) 
                 mac_sounds.get(sound, "Glass.aiff"),
             )
             if shutil.which("afplay") and os.path.exists(mac_sound):
-                subprocess.Popen(
-                    ["afplay", mac_sound],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                return
+                if _start_alert_process(["afplay", mac_sound]):
+                    return
 
         if shutil.which("paplay"):
             preferred = {
@@ -157,24 +168,21 @@ def play_alert_sound(sound: str = "exclamation", sound_file: str | None = None) 
             ]
             for sound_path in candidates:
                 if sound_path and os.path.exists(sound_path):
-                    subprocess.Popen(
-                        ["paplay", sound_path],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    return
+                    if _start_alert_process(["paplay", sound_path]):
+                        return
 
         if shutil.which("aplay"):
             for sound_path in ("/usr/share/sounds/alsa/Front_Center.wav",):
                 if os.path.exists(sound_path):
-                    subprocess.Popen(
-                        ["aplay", sound_path],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    return
+                    if _start_alert_process(["aplay", sound_path]):
+                        return
 
         sys.stdout.write("\a")
         sys.stdout.flush()
 
-    threading.Thread(target=_play, daemon=True).start()
+    alert_thread = threading.Thread(target=_play, daemon=True)
+    with _ALERT_THREAD_LOCK:
+        if _ALERT_THREAD is not None and _ALERT_THREAD.is_alive():
+            return
+        _ALERT_THREAD = alert_thread
+    alert_thread.start()

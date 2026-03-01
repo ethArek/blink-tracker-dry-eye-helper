@@ -136,6 +136,40 @@ class UpdateAggregatesTest(unittest.TestCase):
 
         self.assertEqual(state.last_alert_time, now_ts)
 
+    def test_update_aggregates_clamps_alert_repeat_to_one_second(self) -> None:
+        now_dt = datetime(2024, 1, 2, 12, 34, 56)
+        now_ts = 1704198896.0
+        state = AggregateState(
+            last_stats_time=now_ts - 2.0,
+            last_alert_time=now_ts - 0.5,
+        )
+        blink_state = BlinkState(last_blink_time=now_ts - 20.0)
+        args = argparse.Namespace(
+            csv_output=False,
+            enable_alerts=True,
+            alert_after_seconds=5.0,
+            alert_repeat_seconds=0.05,
+            alert_sound="beep",
+            alert_sound_file=None,
+        )
+
+        db_conn = init_db(":memory:")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch("blink_app.domain.aggregates.play_alert_sound") as alert_mock:
+                update_aggregates(
+                    args=args,
+                    state=state,
+                    now_dt=now_dt,
+                    now_ts=now_ts,
+                    blink_state=blink_state,
+                    db_conn=db_conn,
+                    aggregate_logger=self.logger,
+                    output_dir=tmp_dir,
+                )
+                alert_mock.assert_not_called()
+
+        self.assertEqual(state.last_alert_time, now_ts - 0.5)
+
 
 if __name__ == "__main__":
     unittest.main()
