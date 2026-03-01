@@ -88,3 +88,26 @@ def record_aggregate(
                 blink_count,
             ),
         )
+
+
+def fetch_recent_aggregates(
+    conn: sqlite3.Connection,
+    interval_type: str,
+    limit: int,
+) -> list[tuple[str, int]]:
+    safe_limit = max(0, int(limit))
+    if safe_limit == 0:
+        return []
+
+    cursor = conn.execute(
+        """
+        SELECT interval_start, blink_count
+        FROM blink_aggregates
+        WHERE interval_type = ?
+        ORDER BY interval_start DESC
+        LIMIT ?
+        """,
+        (interval_type, safe_limit),
+    )
+    rows = cursor.fetchall()
+    return [(str(interval_start), int(blink_count)) for interval_start, blink_count in rows]

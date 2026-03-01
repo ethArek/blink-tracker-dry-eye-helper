@@ -17,7 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from blink_app.domain.aggregates import AggregateState, update_aggregates
 from blink_app.cli import parse_args
 from blink_app.constants import ALERT_NO_BLINK_SECONDS, LEFT_EYE, RIGHT_EYE
-from blink_app.services.db import init_db
+from blink_app.services.db import fetch_recent_aggregates, init_db
 from blink_app.domain.detection import BlinkState, eye_aspect_ratio
 from blink_app.services.logging_utils import setup_logging
 
@@ -120,6 +120,7 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._alert_after_input: QtWidgets.QDoubleSpinBox | None = None
         self._minute_table: QtWidgets.QTableWidget | None = None
         self._last_minute_table_refresh: datetime | None = None
+        self._minute_table_limit = 360
 
         self.setWindowTitle("Blink Tracker")
         self._video_label = QtWidgets.QLabel(alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -704,19 +705,14 @@ class BlinkWindow(QtWidgets.QMainWindow):
         if self._minute_table is None:
             return
 
-        cursor = self._db_conn.execute(
-            """
-            SELECT interval_start, blink_count
-            FROM blink_aggregates
-            WHERE interval_type = ?
-            ORDER BY interval_start DESC
-            """,
-            ("minute",),
+        rows = fetch_recent_aggregates(
+            self._db_conn,
+            interval_type="minute",
+            limit=self._minute_table_limit,
         )
-        rows = cursor.fetchall()
         self._minute_table.setRowCount(len(rows))
         for row_index, (interval_start, blink_count) in enumerate(rows):
-            time_item = QtWidgets.QTableWidgetItem(str(interval_start))
+            time_item = QtWidgets.QTableWidgetItem(interval_start)
             time_item.setTextAlignment(
                 QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
             )

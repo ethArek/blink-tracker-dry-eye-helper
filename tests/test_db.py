@@ -3,6 +3,7 @@ from datetime import datetime
 
 from blink_app.services.db import (
     count_blinks_in_range,
+    fetch_recent_aggregates,
     init_db,
     record_aggregate,
     record_blink_event,
@@ -38,6 +39,21 @@ class DatabaseAggregatesTest(unittest.TestCase):
 
         count = count_blinks_in_range(db_conn, start, end)
         self.assertEqual(count, 3)
+
+    def test_fetch_recent_aggregates_applies_limit_and_order(self) -> None:
+        db_conn = init_db(":memory:")
+        base_start = datetime(2024, 1, 1, 10, 0, 0)
+        for offset in range(5):
+            start = base_start.replace(minute=offset)
+            end = start.replace(second=59)
+            record_aggregate(db_conn, "minute", start, end, offset)
+
+        rows = fetch_recent_aggregates(db_conn, "minute", limit=3)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0][0], "2024-01-01 10:04:00")
+        self.assertEqual(rows[0][1], 4)
+        self.assertEqual(rows[1][0], "2024-01-01 10:03:00")
+        self.assertEqual(rows[2][0], "2024-01-01 10:02:00")
 
 
 if __name__ == "__main__":

@@ -23,6 +23,18 @@ class DetectionTest(unittest.TestCase):
         ear = eye_aspect_ratio(landmarks, [0, 1, 2, 3, 4, 5])
         self.assertAlmostEqual(ear, 0.5)
 
+    def test_eye_aspect_ratio_handles_degenerate_horizontal_distance(self) -> None:
+        landmarks = [
+            (1.0, 1.0),
+            (1.0, 2.0),
+            (2.0, 2.0),
+            (1.0, 1.0),
+            (2.0, 0.0),
+            (1.0, 0.0),
+        ]
+        ear = eye_aspect_ratio(landmarks, [0, 1, 2, 3, 4, 5])
+        self.assertEqual(ear, 1.0)
+
     def test_blink_state_update_records_blink_when_threshold_is_met(self) -> None:
         state = BlinkState()
         db_conn = init_db(":memory:")

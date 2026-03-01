@@ -19,6 +19,10 @@ def eye_aspect_ratio(
     A = euclidean(p[1], p[5])
     B = euclidean(p[2], p[4])
     C = euclidean(p[0], p[3])
+    if C <= 1e-9:
+        # Degenerate eye geometry can occur on bad/partial landmark frames.
+        # Returning a high EAR avoids false blink triggers and prevents crashes.
+        return 1.0
     ear = (A + B) / (2.0 * C)
     return ear
 
