@@ -8,12 +8,14 @@ from blink_app.cli import (
     positive_float,
     positive_int,
 )
+from blink_app.constants import CAMERA_STARTUP_TIMEOUT_SECONDS
 
 
 class CliParseArgsTest(unittest.TestCase):
     def test_defaults(self) -> None:
         args = parse_args([])
         self.assertEqual(args.camera_index, 0)
+        self.assertEqual(args.camera_startup_timeout_seconds, CAMERA_STARTUP_TIMEOUT_SECONDS)
         self.assertFalse(args.enable_alerts)
 
     def test_enable_alerts_flag(self) -> None:
@@ -43,6 +45,15 @@ class CliParseArgsTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as context:
             parse_args(["--fps", "0"])
         self.assertEqual(context.exception.code, 2)
+
+    def test_invalid_camera_startup_timeout_fails(self) -> None:
+        with self.assertRaises(SystemExit) as context:
+            parse_args(["--camera-startup-timeout-seconds", "0"])
+        self.assertEqual(context.exception.code, 2)
+
+    def test_custom_camera_startup_timeout_is_applied(self) -> None:
+        args = parse_args(["--camera-startup-timeout-seconds", "2.5"])
+        self.assertEqual(args.camera_startup_timeout_seconds, 2.5)
 
     def test_non_negative_int_rejects_invalid_values(self) -> None:
         with self.assertRaises(argparse.ArgumentTypeError):

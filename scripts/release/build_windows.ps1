@@ -17,12 +17,18 @@ if ($LASTEXITCODE -ne 0) {
   throw "PyInstaller is not installed for '$PythonExe'. Install it with: pip install pyinstaller (in the same environment), then rerun."
 }
 
+& $PythonExe -c "import mediapipe as mp; import sys; print(f'Using mediapipe {mp.__version__}'); sys.exit(0 if hasattr(mp, 'solutions') else 1)"
+if ($LASTEXITCODE -ne 0) {
+  throw "Installed mediapipe for '$PythonExe' does not expose mp.solutions. Install mediapipe==0.10.21 in that environment, then rerun."
+}
+
 $PyInstallerArgs = @(
   "--noconfirm",
   "--clean",
   "--windowed",
   "--name", "BlinkTracker",
-  "--hidden-import", "mediapipe"
+  "--hidden-import", "mediapipe",
+  "--collect-data", "mediapipe"
 )
 
 $WindowsIconPath = "scripts\\release\\windows\\BlinkTracker.ico"
@@ -90,6 +96,9 @@ if ($IsccCommand) {
     "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe",
     "C:\\Program Files\\Inno Setup 6\\ISCC.exe"
   )
+  if ($env:LOCALAPPDATA) {
+    $IsccCandidates += Join-Path $env:LOCALAPPDATA "Programs\\Inno Setup 6\\ISCC.exe"
+  }
   foreach ($candidate in $IsccCandidates) {
     if (Test-Path $candidate) {
       $IsccExe = $candidate

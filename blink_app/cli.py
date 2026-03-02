@@ -5,6 +5,7 @@ from blink_app.constants import (
     ALERT_NO_BLINK_SECONDS,
     ALERT_REPEAT_SECONDS,
     ALERT_SOUND,
+    CAMERA_STARTUP_TIMEOUT_SECONDS,
     EAR_CONSEC_FRAMES,
     EAR_THRESHOLD,
 )
@@ -82,6 +83,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=positive_float,
         default=None,
         help="Requested capture FPS (default: camera default).",
+    )
+    parser.add_argument(
+        "--camera-startup-timeout-seconds",
+        type=positive_float,
+        default=CAMERA_STARTUP_TIMEOUT_SECONDS,
+        help=(
+            "Seconds to wait for first camera frame per backend during startup "
+            f"(default: {CAMERA_STARTUP_TIMEOUT_SECONDS})."
+        ),
     )
     parser.add_argument(
         "--csv-output",

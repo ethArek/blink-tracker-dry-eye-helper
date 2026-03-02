@@ -93,6 +93,10 @@ Press **ESC** or close the window to exit (Ctrl+C also works in the terminal).
   camera default.
 - **`--camera-index`**: If you have multiple cameras, use indices 0, 1, 2, etc. to
   find the correct device.
+- **`--camera-startup-timeout-seconds`**: Maximum time to wait for the first frame
+  per camera backend during startup. Lower values fail faster; raise it if your
+  camera needs extra warm-up time. Blink Tracker also retries once with a longer
+  fallback timeout if the initial startup attempt times out.
 
 ### Advanced (optional)
 
@@ -102,6 +106,8 @@ Press **ESC** or close the window to exit (Ctrl+C also works in the terminal).
 ## Outputs
 
 All outputs are written under `--output-dir` (default: current directory).
+If that directory is not writable, Blink Tracker automatically falls back to a
+user-writable app data directory (on Windows: `%LOCALAPPDATA%\BlinkTracker`).
 
 ### Logs
 
@@ -196,9 +202,14 @@ threshold checks on every push/PR.
 ## Troubleshooting
 
 - **Camera will not open**: Try a different `--camera-index`, close other apps using
-  the camera, or ensure the OS has granted camera permissions.
+  the camera, ensure the OS has granted camera permissions, or increase
+  `--camera-startup-timeout-seconds`.
 - **Black window or no frames**: Some cameras need a few seconds to warm up. If it
   persists, try reducing `--fps` or switching cameras.
+- **`FaceMesh initialization failed: module 'mediapipe' has no attribute 'solutions'`**:
+  Your environment has a MediaPipe release that removed `mp.solutions`. Install the
+  pinned dependency set (`pip install -r requirements.txt`), which currently uses
+  `mediapipe==0.10.21`.
 - **Missed or false blinks**: Adjust `--ear-threshold` and `--ear-consec-frames` until
   the stats panel matches your actual blink rate.
 - **No audio alerts**: Make sure alerts are enabled (`--enable-alerts` or the UI

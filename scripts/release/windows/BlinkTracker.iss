@@ -33,7 +33,7 @@ Name: "desktopicon"; Description: "Create a desktop icon"; Flags: unchecked
 
 [Files]
 #if DirExists(ReleaseDir + "\\BlinkTracker")
-Source: "{#ReleaseDir}\\BlinkTracker\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#ReleaseDir}\\BlinkTracker\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.log,blinks.db"
 #elif FileExists(ReleaseDir + "\\BlinkTracker.exe")
 Source: "{#ReleaseDir}\\BlinkTracker.exe"; DestDir: "{app}"; Flags: ignoreversion
 #else

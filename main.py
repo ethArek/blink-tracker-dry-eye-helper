@@ -1,16 +1,13 @@
-import cv2
 import logging
 import os
 import signal
 import sqlite3
 import sys
-import tempfile
 import threading
 import time
 from datetime import datetime
-from typing import TypedDict
+from typing import Any, TypedDict
 
-import mediapipe as mp
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -20,12 +17,36 @@ from blink_app.constants import ALERT_NO_BLINK_SECONDS, LEFT_EYE, RIGHT_EYE
 from blink_app.services.db import fetch_recent_aggregates, init_db
 from blink_app.domain.detection import BlinkState, eye_aspect_ratio
 from blink_app.services.logging_utils import setup_logging
+from blink_app.services.path_utils import resolve_runtime_output_dir
+
+_cv2_module: Any | None = None
+_mediapipe_module: Any | None = None
+
+
+def get_cv2() -> Any:
+    global _cv2_module
+    if _cv2_module is None:
+        import cv2
+
+        _cv2_module = cv2
+
+    return _cv2_module
+
+
+def get_mediapipe() -> Any:
+    global _mediapipe_module
+    if _mediapipe_module is None:
+        import mediapipe as mp
+
+        _mediapipe_module = mp
+
+    return _mediapipe_module
 
 
 class CameraResult(TypedDict):
     error: str | None
-    cap: cv2.VideoCapture | None
     backend: str | None
+    backend_id: int | None
     open_seconds: float | None
     first_frame_seconds: float | None
 
@@ -99,8 +120,8 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._aggregate_logger = aggregate_logger
         self._db_conn = db_conn
 
-        self._cap: cv2.VideoCapture | None = None
-        self._face_mesh: mp.solutions.face_mesh.FaceMesh | None = None
+        self._cap: Any | None = None
+        self._face_mesh: Any | None = None
         self._frame_timer: QtCore.QTimer | None = None
         self._init_timer: QtCore.QTimer | None = None
         self._closing = False
@@ -108,11 +129,18 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._camera_ready = threading.Event()
         self._camera_result: CameraResult = {
             "error": None,
-            "cap": None,
             "backend": None,
+            "backend_id": None,
             "open_seconds": None,
             "first_frame_seconds": None,
         }
+        self._camera_init_started_at = time.perf_counter()
+        self._camera_init_hard_timeout_seconds = max(
+            15.0,
+            float(self._args.camera_startup_timeout_seconds) + 12.0,
+        )
+        self._consecutive_read_failures = 0
+        self._max_read_failures = 90
 
         self._blink_state = BlinkState(last_blink_time=time.time())
         self._aggregate_state = AggregateState(last_stats_time=time.time())
@@ -501,24 +529,16 @@ class BlinkWindow(QtWidgets.QMainWindow):
         except (TypeError, ValueError):
             waiting_width = 640
 
-        frame = np.zeros((waiting_height, waiting_width, 3), dtype=np.uint8)
-        cv2.putText(
-            frame,
-            "Initializing camera...",
-            (30, 240),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (255, 255, 255),
-            2,
-            cv2.LINE_AA,
-        )
-        return frame
+        return np.zeros((waiting_height, waiting_width, 3), dtype=np.uint8)
 
     def _open_camera(self) -> None:
         try:
+            cv2 = get_cv2()
             backends: list[tuple[str, int | None]] = []
             if hasattr(cv2, "CAP_DSHOW"):
                 backends.append(("DSHOW", cv2.CAP_DSHOW))
+            if hasattr(cv2, "CAP_MSMF"):
+                backends.append(("MSMF", cv2.CAP_MSMF))
             backends.append(("DEFAULT", None))
 
             last_error: str | None = None
@@ -539,32 +559,15 @@ class BlinkWindow(QtWidgets.QMainWindow):
                 if self._args.fps is not None:
                     local_cap.set(cv2.CAP_PROP_FPS, self._args.fps)
 
-                first_frame_start = time.perf_counter()
-                got_frame = False
-                for _ in range(60):
-                    ret, _frame = local_cap.read()
-                    if ret:
-                        got_frame = True
-                        break
-                    time.sleep(0.05)
-                first_frame_seconds = time.perf_counter() - first_frame_start
-
-                if not got_frame:
-                    last_error = (
-                        f"backend={backend_name} open={open_seconds:.2f}s "
-                        f"first_frame>{first_frame_seconds:.2f}s"
-                    )
-                    local_cap.release()
-                    continue
-
-                self._camera_result["cap"] = local_cap
+                local_cap.release()
                 self._camera_result["backend"] = backend_name
+                self._camera_result["backend_id"] = backend_id
                 self._camera_result["open_seconds"] = open_seconds
-                self._camera_result["first_frame_seconds"] = first_frame_seconds
+                self._camera_result["first_frame_seconds"] = 0.0
                 return
 
             self._camera_result["error"] = (
-                "Cannot open camera / get first frame."
+                "Cannot open camera."
                 + (f" Last attempt: {last_error}" if last_error else "")
             )
         except Exception as e:
@@ -576,8 +579,15 @@ class BlinkWindow(QtWidgets.QMainWindow):
         if self._closing:
             return
         if not self._camera_ready.is_set():
-            self._show_frame(self._waiting_frame)
-            return
+            elapsed = time.perf_counter() - self._camera_init_started_at
+            if elapsed >= self._camera_init_hard_timeout_seconds:
+                self._camera_result["error"] = (
+                    "Camera initialization timed out before startup probe completed."
+                )
+                self._camera_ready.set()
+            else:
+                self._show_frame(self._waiting_frame)
+                return
 
         if self._init_timer is not None:
             self._init_timer.stop()
@@ -587,12 +597,29 @@ class BlinkWindow(QtWidgets.QMainWindow):
             self.close()
             return
 
-        self._cap = self._camera_result["cap"]
+        cv2 = get_cv2()
+        backend_id = self._camera_result["backend_id"]
+        self._cap = (
+            cv2.VideoCapture(self._args.camera_index, backend_id)
+            if backend_id is not None
+            else cv2.VideoCapture(self._args.camera_index)
+        )
         if self._cap is None:
             self._app_logger.error("Camera did not initialize.")
             QtWidgets.QMessageBox.critical(self, "Camera Error", "Camera did not initialize.")
             self.close()
             return
+        if not self._cap.isOpened():
+            self._app_logger.error("Camera backend probe passed, but open in UI thread failed.")
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Camera Error",
+                "Camera opened during probe, but failed to open for live capture.",
+            )
+            self.close()
+            return
+        if self._args.fps is not None:
+            self._cap.set(cv2.CAP_PROP_FPS, self._args.fps)
 
         if self._camera_result["backend"] is not None:
             self._app_logger.info(
@@ -602,17 +629,34 @@ class BlinkWindow(QtWidgets.QMainWindow):
                 self._camera_result["first_frame_seconds"] or 0.0,
             )
 
-        face_mesh_start = time.perf_counter()
-        mp_face_mesh = mp.solutions.face_mesh
-        self._face_mesh = mp_face_mesh.FaceMesh(
-            static_image_mode=False,
-            max_num_faces=1,
-            refine_landmarks=True,
-        )
-        self._app_logger.info(
-            "FaceMesh initialized in %.2fs.",
-            time.perf_counter() - face_mesh_start,
-        )
+        try:
+            mp = get_mediapipe()
+            if not hasattr(mp, "solutions"):
+                raise RuntimeError(
+                    "Installed mediapipe "
+                    f"{getattr(mp, '__version__', 'unknown')} does not provide "
+                    "mp.solutions FaceMesh. Install mediapipe==0.10.21."
+                )
+            face_mesh_start = time.perf_counter()
+            mp_face_mesh = mp.solutions.face_mesh
+            self._face_mesh = mp_face_mesh.FaceMesh(
+                static_image_mode=False,
+                max_num_faces=1,
+                refine_landmarks=True,
+            )
+            self._app_logger.info(
+                "FaceMesh initialized in %.2fs.",
+                time.perf_counter() - face_mesh_start,
+            )
+        except Exception as exc:
+            self._app_logger.exception("FaceMesh initialization failed.")
+            QtWidgets.QMessageBox.critical(
+                self,
+                "FaceMesh Error",
+                f"FaceMesh initialization failed: {exc}",
+            )
+            self.close()
+            return
         self._app_logger.info("Camera started. Press Esc or close window to exit.")
 
         self._frame_timer = QtCore.QTimer(self)
@@ -626,10 +670,25 @@ class BlinkWindow(QtWidgets.QMainWindow):
             return
         ret, frame = self._cap.read()
         if not ret:
-            self._app_logger.warning("Failed to read frame.")
+            self._consecutive_read_failures += 1
+            if self._consecutive_read_failures <= self._max_read_failures:
+                if self._consecutive_read_failures == 1 or self._consecutive_read_failures % 30 == 0:
+                    self._app_logger.warning(
+                        "Failed to read frame (%d/%d).",
+                        self._consecutive_read_failures,
+                        self._max_read_failures,
+                    )
+                self._show_frame(self._waiting_frame)
+                return
+            self._app_logger.error(
+                "Failed to read frame too many times (%d). Closing.",
+                self._consecutive_read_failures,
+            )
             self.close()
             return
+        self._consecutive_read_failures = 0
 
+        cv2 = get_cv2()
         h, w = frame.shape[:2]
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         try:
@@ -725,6 +784,7 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._minute_table.resizeRowsToContents()
 
     def _show_frame(self, frame: np.ndarray) -> None:
+        cv2 = get_cv2()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width = rgb.shape[:2]
         bytes_per_line = 3 * width
@@ -768,14 +828,6 @@ class BlinkWindow(QtWidgets.QMainWindow):
         super().closeEvent(event)
 
 
-def ensure_writable_directory(path: str) -> str:
-    absolute_path = os.path.abspath(path)
-    os.makedirs(absolute_path, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=absolute_path, delete=True):
-        pass
-    return absolute_path
-
-
 def resolve_db_path(output_dir: str, db_path_arg: str | None) -> str:
     if db_path_arg:
         db_path = os.path.abspath(db_path_arg)
@@ -794,8 +846,12 @@ def resolve_db_path(output_dir: str, db_path_arg: str | None) -> str:
 
 def main() -> int:
     args = parse_args()
+    allow_output_fallback = args.output_dir == "."
     try:
-        output_dir = ensure_writable_directory(args.output_dir)
+        output_dir, output_dir_warning = resolve_runtime_output_dir(
+            args.output_dir,
+            allow_fallback=allow_output_fallback,
+        )
     except OSError as exc:
         logging.basicConfig(level=logging.INFO)
         logging.getLogger("app").error(
@@ -806,6 +862,8 @@ def main() -> int:
         return 1
 
     app_logger, blink_logger, aggregate_logger = setup_logging(output_dir)
+    if output_dir_warning is not None:
+        app_logger.warning("%s", output_dir_warning)
 
     db_path = ""
     try:
