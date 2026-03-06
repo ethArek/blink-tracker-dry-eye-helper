@@ -27,7 +27,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run with defaults (same as the original behavior):
+Run with defaults:
 
 ```bash
 python main.py
@@ -49,6 +49,12 @@ Enable alerts (off by default) and customize the reminder timing:
 
 ```bash
 python main.py --enable-alerts --alert-after-seconds 25 --alert-repeat-seconds 25
+```
+
+If you need more eyelid detail, enable MediaPipe refinement explicitly:
+
+```bash
+python main.py --refine-landmarks
 ```
 
 Show all options:
@@ -94,9 +100,25 @@ Press **ESC** or close the window to exit (Ctrl+C also works in the terminal).
 - **`--camera-index`**: If you have multiple cameras, use indices 0, 1, 2, etc. to
   find the correct device.
 - **`--camera-startup-timeout-seconds`**: Maximum time to wait for the first frame
-  per camera backend during startup. Lower values fail faster; raise it if your
-  camera needs extra warm-up time. Blink Tracker also retries once with a longer
-  fallback timeout if the initial startup attempt times out.
+  from each camera backend during startup. Raise it if your camera needs extra
+  warm-up time.
+- **`--facemesh-max-width`**: Maximum RGB frame width passed into MediaPipe FaceMesh.
+  Default is `960`. Frames at or below that width are processed as-is; larger frames
+  are downscaled proportionally before FaceMesh runs.
+- **`--refine-landmarks`**: Enables MediaPipe's refined eye/iris landmarks for higher
+  detail at a higher CPU cost. This is off by default to keep runtime overhead down.
+
+### Performance notes
+
+- Blink Tracker processes only the first detected face.
+- The app computes EAR from the eye landmarks it needs instead of rebuilding the full
+  landmark list each frame.
+- The default `--facemesh-max-width 960` is conservative: it reduces work on 1080p+
+  cameras without aggressively shrinking eye detail.
+- Lowering `--facemesh-max-width` can improve speed, but if you push it too low you
+  may get noisier eyelid landmarks and worse blink detection.
+- `--refine-landmarks` can improve eye detail, but it is slower. Use it when accuracy
+  matters more than CPU usage.
 
 ### Advanced (optional)
 
@@ -206,12 +228,17 @@ threshold checks on every push/PR.
   `--camera-startup-timeout-seconds`.
 - **Black window or no frames**: Some cameras need a few seconds to warm up. If it
   persists, try reducing `--fps` or switching cameras.
+- **Slow performance**: Leave `--refine-landmarks` off unless you need it. If your
+  camera runs above 960 px wide, lowering `--facemesh-max-width` can reduce CPU use,
+  but raise it again if blink quality drops.
 - **`FaceMesh initialization failed: module 'mediapipe' has no attribute 'solutions'`**:
   Your environment has a MediaPipe release that removed `mp.solutions`. Install the
   pinned dependency set (`pip install -r requirements.txt`), which currently uses
   `mediapipe==0.10.21`.
 - **Missed or false blinks**: Adjust `--ear-threshold` and `--ear-consec-frames` until
-  the stats panel matches your actual blink rate.
+  the stats panel matches your actual blink rate. If you also lowered
+  `--facemesh-max-width`, try raising it back toward `960` or enabling
+  `--refine-landmarks`.
 - **No audio alerts**: Make sure alerts are enabled (`--enable-alerts` or the UI
   toggle), then install a system audio player (e.g., `paplay`/`aplay` on Linux, or
   ensure audio output is enabled).

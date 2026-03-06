@@ -1,6 +1,5 @@
 import argparse
 
-from blink_app import __version__
 from blink_app.constants import (
     ALERT_NO_BLINK_SECONDS,
     ALERT_REPEAT_SECONDS,
@@ -8,7 +7,10 @@ from blink_app.constants import (
     CAMERA_STARTUP_TIMEOUT_SECONDS,
     EAR_CONSEC_FRAMES,
     EAR_THRESHOLD,
+    FACEMESH_MAX_WIDTH,
+    FACEMESH_REFINE_LANDMARKS,
 )
+from blink_app.metadata import APP_VERSION_LABEL
 
 
 def non_negative_int(value: str) -> int:
@@ -53,7 +55,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"Blink Tracker {__version__}",
+        version=APP_VERSION_LABEL,
     )
     parser.add_argument(
         "--camera-index",
@@ -92,6 +94,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Seconds to wait for first camera frame per backend during startup "
             f"(default: {CAMERA_STARTUP_TIMEOUT_SECONDS})."
         ),
+    )
+    parser.add_argument(
+        "--facemesh-max-width",
+        type=positive_int,
+        default=FACEMESH_MAX_WIDTH,
+        help=(
+            "Maximum RGB frame width passed into MediaPipe FaceMesh. Lower values improve speed "
+            f"(default: {FACEMESH_MAX_WIDTH})."
+        ),
+    )
+    parser.add_argument(
+        "--refine-landmarks",
+        action="store_true",
+        dest="refine_landmarks",
+        help="Enable MediaPipe landmark refinement for higher detail at a higher CPU cost.",
     )
     parser.add_argument(
         "--csv-output",
@@ -164,5 +181,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         dest="enable_alerts",
         help="Disable audio alerts when no blink is detected.",
     )
-    parser.set_defaults(enable_alerts=False)
+    parser.set_defaults(
+        enable_alerts=False,
+        refine_landmarks=FACEMESH_REFINE_LANDMARKS,
+    )
     return parser.parse_args(argv)

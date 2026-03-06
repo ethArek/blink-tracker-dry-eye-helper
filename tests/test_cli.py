@@ -8,7 +8,11 @@ from blink_app.cli import (
     positive_float,
     positive_int,
 )
-from blink_app.constants import CAMERA_STARTUP_TIMEOUT_SECONDS
+from blink_app.constants import (
+    CAMERA_STARTUP_TIMEOUT_SECONDS,
+    FACEMESH_MAX_WIDTH,
+    FACEMESH_REFINE_LANDMARKS,
+)
 
 
 class CliParseArgsTest(unittest.TestCase):
@@ -16,6 +20,8 @@ class CliParseArgsTest(unittest.TestCase):
         args = parse_args([])
         self.assertEqual(args.camera_index, 0)
         self.assertEqual(args.camera_startup_timeout_seconds, CAMERA_STARTUP_TIMEOUT_SECONDS)
+        self.assertEqual(args.facemesh_max_width, FACEMESH_MAX_WIDTH)
+        self.assertEqual(args.refine_landmarks, FACEMESH_REFINE_LANDMARKS)
         self.assertFalse(args.enable_alerts)
 
     def test_enable_alerts_flag(self) -> None:
@@ -25,6 +31,10 @@ class CliParseArgsTest(unittest.TestCase):
     def test_disable_alerts_flag(self) -> None:
         args = parse_args(["--disable-alerts"])
         self.assertFalse(args.enable_alerts)
+
+    def test_refine_landmarks_flag(self) -> None:
+        args = parse_args(["--refine-landmarks"])
+        self.assertTrue(args.refine_landmarks)
 
     def test_conflicting_alert_flags_fail(self) -> None:
         with self.assertRaises(SystemExit) as context:
@@ -51,9 +61,18 @@ class CliParseArgsTest(unittest.TestCase):
             parse_args(["--camera-startup-timeout-seconds", "0"])
         self.assertEqual(context.exception.code, 2)
 
+    def test_invalid_facemesh_max_width_fails(self) -> None:
+        with self.assertRaises(SystemExit) as context:
+            parse_args(["--facemesh-max-width", "0"])
+        self.assertEqual(context.exception.code, 2)
+
     def test_custom_camera_startup_timeout_is_applied(self) -> None:
         args = parse_args(["--camera-startup-timeout-seconds", "2.5"])
         self.assertEqual(args.camera_startup_timeout_seconds, 2.5)
+
+    def test_custom_facemesh_max_width_is_applied(self) -> None:
+        args = parse_args(["--facemesh-max-width", "512"])
+        self.assertEqual(args.facemesh_max_width, 512)
 
     def test_non_negative_int_rejects_invalid_values(self) -> None:
         with self.assertRaises(argparse.ArgumentTypeError):
