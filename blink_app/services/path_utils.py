@@ -2,6 +2,8 @@ import os
 import sys
 import tempfile
 
+from blink_app.metadata import APP_POSIX_DATA_DIR, APP_WINDOWS_DATA_DIR
+
 
 def ensure_writable_directory(path: str) -> str:
     absolute_path = os.path.abspath(path)
@@ -16,21 +18,21 @@ def default_output_dir() -> str:
     if os.name == "nt":
         local_app_data = os.getenv("LOCALAPPDATA")
         if local_app_data:
-            return os.path.join(local_app_data, "BlinkTracker")
+            return os.path.join(local_app_data, APP_WINDOWS_DATA_DIR)
 
     if sys.platform == "darwin":
         return os.path.join(
             os.path.expanduser("~"),
             "Library",
             "Application Support",
-            "BlinkTracker",
+            APP_WINDOWS_DATA_DIR,
         )
 
     xdg_data_home = os.getenv("XDG_DATA_HOME")
     if xdg_data_home:
-        return os.path.join(xdg_data_home, "blink-tracker")
+        return os.path.join(xdg_data_home, APP_POSIX_DATA_DIR)
 
-    return os.path.join(os.path.expanduser("~"), ".local", "share", "blink-tracker")
+    return os.path.join(os.path.expanduser("~"), ".local", "share", APP_POSIX_DATA_DIR)
 
 
 def resolve_runtime_output_dir(path: str, allow_fallback: bool) -> tuple[str, str | None]:

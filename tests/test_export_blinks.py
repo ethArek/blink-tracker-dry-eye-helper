@@ -1,95 +1,117 @@
-import csv
 import json
-import os
-import tempfile
+import sqlite3
 import unittest
-from datetime import datetime
+from unittest.mock import mock_open, patch
 
 import export_blinks
-from blink_app.services.db import init_db, record_aggregate, record_blink_event
 
 
 class ExportBlinksTest(unittest.TestCase):
+    def test_export_rows_to_csv_writes_headers_and_rows(self) -> None:
+        handle = mock_open()
+        with patch("export_blinks.open", handle):
+            export_blinks.export_rows_to_csv(
+                "ignored.csv",
+                ["id", "event_time"],
+                [(1, "2024-01-01 12:00:00"), (2, "2024-01-01 12:01:00")],
+            )
+
+        written = "".join(call.args[0] for call in handle().write.call_args_list)
+        self.assertIn("id,event_time", written)
+        self.assertIn("1,2024-01-01 12:00:00", written)
+        self.assertIn("2,2024-01-01 12:01:00", written)
+
+    def test_export_rows_to_json_writes_json_array(self) -> None:
+        handle = mock_open()
+        with patch("export_blinks.open", handle):
+            export_blinks.export_rows_to_json(
+                "ignored.json",
+                ["id", "interval_type"],
+                [(1, "minute"), (2, "hour")],
+            )
+
+        written = "".join(call.args[0] for call in handle().write.call_args_list)
+        payload = json.loads(written)
+        self.assertEqual(
+            payload,
+            [
+                {"id": 1, "interval_type": "minute"},
+                {"id": 2, "interval_type": "hour"},
+            ],
+        )
+
     def test_main_fails_when_database_file_is_missing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            missing_db_path = os.path.join(tmp_dir, "missing.db")
-            with self.assertRaises(FileNotFoundError):
-                export_blinks.main(
-                    [
-                        "--db-path",
-                        missing_db_path,
-                        "--output-dir",
-                        tmp_dir,
-                    ]
-                )
+        with patch("export_blinks.os.makedirs") as makedirs_mock:
+            with patch("export_blinks.os.path.exists", return_value=False):
+                with self.assertRaises(FileNotFoundError):
+                    export_blinks.main(
+                        [
+                            "--db-path",
+                            "C:\\virtual-output\\missing.db",
+                            "--output-dir",
+                            "C:\\virtual-output",
+                        ]
+                    )
 
-    def test_main_exports_csv_and_json(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            db_path = os.path.join(tmp_dir, "blinks.db")
-            db_conn = init_db(db_path)
-            try:
-                event_time = datetime(2024, 1, 1, 12, 0, 0)
-                record_blink_event(db_conn, event_time)
-                record_aggregate(
-                    db_conn,
-                    "minute",
-                    datetime(2024, 1, 1, 11, 59, 0),
-                    datetime(2024, 1, 1, 11, 59, 59),
-                    1,
-                )
-                record_aggregate(
-                    db_conn,
-                    "minute",
-                    datetime(2024, 1, 1, 12, 0, 0),
-                    datetime(2024, 1, 1, 12, 0, 59),
-                    2,
-                )
-            finally:
-                db_conn.close()
+        makedirs_mock.assert_called_once_with("C:\\virtual-output", exist_ok=True)
 
-            exit_code = export_blinks.main(
-                [
-                    "--db-path",
-                    db_path,
-                    "--output-dir",
-                    tmp_dir,
-                    "--format",
-                    "csv",
-                    "--table",
-                    "both",
-                ]
-            )
-            self.assertEqual(exit_code, 0)
+    def test_main_exports_selected_tables(self) -> None:
+        real_connect = sqlite3.connect
+        output_dir = "C:\\virtual-output"
 
-            events_csv_path = os.path.join(tmp_dir, "blink_events.csv")
-            aggregates_csv_path = os.path.join(tmp_dir, "blink_aggregates.csv")
-            self.assertTrue(os.path.exists(events_csv_path))
-            self.assertTrue(os.path.exists(aggregates_csv_path))
+        with patch("export_blinks.os.makedirs"):
+            with patch("export_blinks.os.path.exists", return_value=True):
+                with patch(
+                    "export_blinks.sqlite3.connect",
+                    side_effect=lambda *args, **kwargs: real_connect(":memory:", timeout=30.0),
+                ):
+                    with patch("export_blinks.export_table") as export_table_mock:
+                        exit_code = export_blinks.main(
+                            [
+                                "--db-path",
+                                "C:\\virtual-output\\blinks.db",
+                                "--output-dir",
+                                output_dir,
+                                "--format",
+                                "csv",
+                                "--table",
+                                "both",
+                            ]
+                        )
 
-            with open(events_csv_path, newline="", encoding="utf-8") as handle:
-                rows = list(csv.reader(handle))
-            self.assertIn("event_time", rows[0])
-            self.assertEqual(len(rows), 2)
+                        self.assertEqual(exit_code, 0)
+                        self.assertEqual(
+                            [call.args[1] for call in export_table_mock.call_args_list],
+                            ["blink_events", "blink_aggregates"],
+                        )
+                        self.assertTrue(all(call.args[2] == output_dir for call in export_table_mock.call_args_list))
+                        self.assertTrue(all(call.args[3] == "csv" for call in export_table_mock.call_args_list))
 
-            exit_code = export_blinks.main(
-                [
-                    "--db-path",
-                    db_path,
-                    "--output-dir",
-                    tmp_dir,
-                    "--format",
-                    "json",
-                    "--table",
-                    "aggregates",
-                ]
-            )
-            self.assertEqual(exit_code, 0)
+        with patch("export_blinks.os.makedirs"):
+            with patch("export_blinks.os.path.exists", return_value=True):
+                with patch(
+                    "export_blinks.sqlite3.connect",
+                    side_effect=lambda *args, **kwargs: real_connect(":memory:", timeout=30.0),
+                ):
+                    with patch("export_blinks.export_table") as export_table_mock:
+                        exit_code = export_blinks.main(
+                            [
+                                "--db-path",
+                                "C:\\virtual-output\\blinks.db",
+                                "--output-dir",
+                                output_dir,
+                                "--format",
+                                "json",
+                                "--table",
+                                "aggregates",
+                            ]
+                        )
 
-            aggregates_json_path = os.path.join(tmp_dir, "blink_aggregates.json")
-            with open(aggregates_json_path, encoding="utf-8") as handle:
-                payload = json.load(handle)
-            self.assertEqual(len(payload), 2)
-            self.assertEqual(payload[0]["interval_type"], "minute")
+                        self.assertEqual(exit_code, 0)
+                        self.assertEqual(len(export_table_mock.call_args_list), 1)
+                        self.assertEqual(export_table_mock.call_args.args[1], "blink_aggregates")
+                        self.assertEqual(export_table_mock.call_args.args[2], output_dir)
+                        self.assertEqual(export_table_mock.call_args.args[3], "json")
 
 
 if __name__ == "__main__":

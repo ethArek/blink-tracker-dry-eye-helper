@@ -1,5 +1,28 @@
+import os
 import sqlite3
 from datetime import datetime
+
+DEFAULT_DB_FILENAME = "blinks.db"
+
+
+def format_db_timestamp(value: datetime) -> str:
+    return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def resolve_db_path(output_dir: str, db_path_arg: str | None) -> str:
+    if db_path_arg:
+        db_path = os.path.abspath(db_path_arg)
+    else:
+        db_path = os.path.join(output_dir, DEFAULT_DB_FILENAME)
+
+    if os.path.isdir(db_path):
+        raise IsADirectoryError(f"Database path is a directory: {db_path}")
+
+    db_parent = os.path.dirname(db_path)
+    if db_parent:
+        os.makedirs(db_parent, exist_ok=True)
+
+    return db_path
 
 
 def init_db(db_path: str) -> sqlite3.Connection:
@@ -45,7 +68,7 @@ def record_blink_event(conn: sqlite3.Connection, event_time: datetime) -> None:
     with conn:
         conn.execute(
             "INSERT INTO blink_events (event_time) VALUES (?)",
-            (event_time.strftime("%Y-%m-%d %H:%M:%S"),),
+            (format_db_timestamp(event_time),),
         )
 
 
@@ -53,8 +76,8 @@ def count_blinks_in_range(conn: sqlite3.Connection, start: datetime, end: dateti
     cursor = conn.execute(
         "SELECT COUNT(*) FROM blink_events WHERE event_time >= ? AND event_time <= ?",
         (
-            start.strftime("%Y-%m-%d %H:%M:%S"),
-            end.strftime("%Y-%m-%d %H:%M:%S"),
+            format_db_timestamp(start),
+            format_db_timestamp(end),
         ),
     )
     row = cursor.fetchone()
@@ -83,8 +106,8 @@ def record_aggregate(
             """,
             (
                 interval_type,
-                start.strftime("%Y-%m-%d %H:%M:%S"),
-                end.strftime("%Y-%m-%d %H:%M:%S"),
+                format_db_timestamp(start),
+                format_db_timestamp(end),
                 blink_count,
             ),
         )

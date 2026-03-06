@@ -1,5 +1,5 @@
+import contextlib
 import os
-import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -8,29 +8,33 @@ from blink_app.services.path_utils import ensure_writable_directory, resolve_run
 
 class PathUtilsTest(unittest.TestCase):
     def test_ensure_writable_directory_creates_and_returns_absolute_path(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            writable_dir = os.path.join(tmp_dir, "output")
+        requested_path = os.path.join("relative", "output")
+        expected_path = os.path.abspath(requested_path)
 
-            resolved_path = ensure_writable_directory(writable_dir)
+        with patch("blink_app.services.path_utils.os.makedirs") as makedirs_mock:
+            with patch(
+                "blink_app.services.path_utils.tempfile.NamedTemporaryFile",
+                return_value=contextlib.nullcontext(None),
+            ) as temp_file_mock:
+                resolved_path = ensure_writable_directory(requested_path)
 
-            self.assertTrue(os.path.isabs(resolved_path))
-            self.assertTrue(os.path.isdir(resolved_path))
-            probe_path = os.path.join(resolved_path, "probe.txt")
-            with open(probe_path, "w", encoding="utf-8") as handle:
-                handle.write("ok")
-            self.assertTrue(os.path.exists(probe_path))
+        self.assertEqual(resolved_path, expected_path)
+        makedirs_mock.assert_called_once_with(expected_path, exist_ok=True)
+        temp_file_mock.assert_called_once_with(dir=expected_path, delete=True)
 
     def test_resolve_runtime_output_dir_returns_requested_path_when_writable(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_dir = os.path.join(tmp_dir, "runtime")
-
+        expected_path = os.path.abspath(os.path.join("C:\\", "virtual-output", "runtime"))
+        with patch(
+            "blink_app.services.path_utils.ensure_writable_directory",
+            return_value=expected_path,
+        ):
             resolved_path, warning_message = resolve_runtime_output_dir(
-                output_dir,
+                expected_path,
                 allow_fallback=True,
             )
 
-            self.assertEqual(resolved_path, os.path.abspath(output_dir))
-            self.assertIsNone(warning_message)
+        self.assertEqual(resolved_path, expected_path)
+        self.assertIsNone(warning_message)
 
     def test_resolve_runtime_output_dir_raises_without_fallback(self) -> None:
         with patch(
