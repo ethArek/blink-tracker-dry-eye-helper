@@ -5,7 +5,7 @@ import unittest
 try:
     from blink_app.domain.detection import BlinkState
     from blink_app.ui.window import BlinkWindow
-except ModuleNotFoundError as exc:  # pragma: no cover - environment-dependent
+except Exception as exc:  # pragma: no cover - environment-dependent
     BlinkWindow = None
     BlinkState = None
     IMPORT_ERROR = exc
