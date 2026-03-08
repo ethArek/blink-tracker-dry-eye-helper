@@ -47,7 +47,7 @@ def write_csv_row(path: str, headers: list[str], row: list[object]) -> None:
         writer.writerow(row)
 
 
-def _maybe_play_alert(
+def maybe_play_alert(
     args: argparse.Namespace,
     state: AggregateState,
     now_ts: float,
@@ -163,8 +163,6 @@ def update_aggregates(
     if now_ts - state.last_stats_time < 1.0:
         return
     state.last_stats_time = now_ts
-
-    _maybe_play_alert(args, state, now_ts, blink_state)
 
     date_str = now_dt.strftime("%Y-%m-%d")
     csv_headers = ["date", "interval_start", "blinks"]

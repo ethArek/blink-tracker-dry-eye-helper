@@ -159,20 +159,16 @@ class DetectionTest(unittest.TestCase):
         state = BlinkState()
         db_conn = init_db(":memory:")
         try:
-            state.apply_personal_calibration(
-                0.30,
-                0.30,
-                aperture_threshold=0.24,
-            )
+            self._seed_open(state, db_conn, 10.00, ear=0.30)
 
-            for now_ts in (10.00, 10.03, 10.06, 10.09):
+            for now_ts in (10.12, 10.15, 10.18, 10.21):
                 self._update(state, db_conn, now_ts, 0.24, 0.24, ear_threshold=0.21)
 
             self.assertIsNone(state.eye_closed_since)
 
-            for now_ts in (10.12, 10.15, 10.18):
+            for now_ts in (10.24, 10.27, 10.30):
                 self._update(state, db_conn, now_ts, 0.14, 0.14, ear_threshold=0.21)
-            for now_ts in (10.21, 10.24, 10.27, 10.30):
+            for now_ts in (10.33, 10.36, 10.39, 10.42):
                 self._update(state, db_conn, now_ts, 0.24, 0.24, ear_threshold=0.21)
 
             self.assertEqual(state.blink_counter, 1)
@@ -233,37 +229,6 @@ class DetectionTest(unittest.TestCase):
             self.assertEqual(self._blink_count(db_conn), 1)
         finally:
             db_conn.close()
-
-    def test_apply_personal_calibration_seeds_open_baseline_and_thresholds(self) -> None:
-        state = BlinkState()
-
-        state.apply_personal_calibration(
-            0.29,
-            0.31,
-            aperture_threshold=0.24,
-            close_avg_ratio=0.78,
-            close_max_ratio=0.84,
-            deep_avg_ratio=0.72,
-        )
-
-        self.assertAlmostEqual(state.left_open_reference_aperture or 0.0, 0.29)
-        self.assertAlmostEqual(state.right_open_reference_aperture or 0.0, 0.31)
-        self.assertAlmostEqual(state.smoothed_left_aperture or 0.0, 0.29)
-        self.assertAlmostEqual(state.smoothed_right_aperture or 0.0, 0.31)
-        self.assertAlmostEqual(state.open_reference_ear or 0.0, 0.30)
-        self.assertAlmostEqual(state.aperture_threshold(0.2), 0.24)
-        self.assertAlmostEqual(state.close_avg_ratio, 0.78)
-        self.assertAlmostEqual(state.close_max_ratio, 0.84)
-        self.assertAlmostEqual(state.deep_avg_ratio, 0.72)
-
-    def test_apply_personal_calibration_ignores_invalid_open_samples(self) -> None:
-        state = BlinkState()
-
-        state.apply_personal_calibration(float("nan"), 0.31, aperture_threshold=0.24)
-
-        self.assertIsNone(state.left_open_reference_aperture)
-        self.assertIsNone(state.right_open_reference_aperture)
-        self.assertIsNone(state.calibrated_aperture_threshold)
 
     def test_blink_state_ignores_startup_closed_frames_until_baseline_exists(self) -> None:
         state = BlinkState()

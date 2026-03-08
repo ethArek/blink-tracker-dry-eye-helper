@@ -2,9 +2,8 @@
 
 Blink Tracker is a webcam-based blink monitor that uses MediaPipe FaceMesh
 to estimate a multi-gap eyelid aperture signal and track blink frequency over time.
-It provides a live preview with session stats, runs a short startup calibration by
-default, writes structured logs, stores data in SQLite, and can export aggregates for
-analysis.
+It provides a live preview with session stats, writes structured logs, stores data in
+SQLite, and can export aggregates for analysis.
 
 ## Requirements
 
@@ -58,12 +57,6 @@ If you need more eyelid detail, enable MediaPipe refinement explicitly:
 python main.py --refine-landmarks
 ```
 
-Use a longer startup calibration or collect a couple of intentional blinks:
-
-```bash
-python main.py --calibration-seconds 4 --calibration-blinks 2
-```
-
 Show all options:
 
 ```bash
@@ -79,8 +72,6 @@ python main.py --version
 ## What you will see
 
 - A live camera preview with a tabbed stats panel on the right (Stats + Per-minute).
-- A short startup calibration overlay that asks you to keep your eyes open before
-  blink counting begins.
 - Session blink count, "last blink" time, per-minute/hour aggregates, and today's total.
 - An Alerts card with a toggle and live "After" control for reminder timing.
 - A Per-minute table showing the most recent minute aggregates (latest first).
@@ -94,10 +85,6 @@ Press **ESC** or close the window to exit (Ctrl+C also works in the terminal).
   Valid range is `(0.0, 1.0]`.
 - **`--ear-consec-frames`**: Increase to avoid false positives, decrease for quicker
   detection if you blink rapidly. Must be a positive integer.
-- **`--calibration-seconds`**: Seconds of stable open-eye calibration at startup.
-  Default is `3.0`. Set to `0` to disable startup calibration entirely.
-- **`--calibration-blinks`**: Optional number of intentional blinks to collect after
-  the open-eye calibration. Default is `0`.
 - **`--enable-alerts`**: Turn on audio alerts (default: off). You can also toggle
   alerts live in the app.
 - **`--disable-alerts`**: Force alerts off (mutually exclusive with `--enable-alerts`).
@@ -248,9 +235,7 @@ threshold checks on every push/PR.
   Your environment has a MediaPipe release that removed `mp.solutions`. Install the
   pinned dependency set (`pip install -r requirements.txt`), which currently uses
   `mediapipe==0.10.21`.
-- **Missed or false blinks**: Let the startup calibration finish before judging the
-  blink counter. If needed, try `--calibration-blinks 2`, then adjust
-  `--ear-threshold` and `--ear-consec-frames`. If you also lowered
+- **Missed or false blinks**: Adjust `--ear-threshold` and `--ear-consec-frames` as needed. If you also lowered
   `--facemesh-max-width`, try raising it back toward `960` or enabling
   `--refine-landmarks`.
 - **No audio alerts**: Make sure alerts are enabled (`--enable-alerts` or the UI
