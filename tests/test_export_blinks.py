@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import unittest
 from unittest.mock import mock_open, patch
@@ -7,6 +8,38 @@ import export_blinks
 
 
 class ExportBlinksTest(unittest.TestCase):
+    def test_export_table_routes_csv_exports(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE blink_events (id INTEGER, event_time TEXT)")
+        conn.execute("INSERT INTO blink_events (id, event_time) VALUES (?, ?)", (1, "2024-01-01 12:00:00"))
+
+        with patch("export_blinks.export_rows_to_csv") as export_csv_mock:
+            export_blinks.export_table(conn, "blink_events", "C:\\virtual-output", "csv")
+
+        self.assertEqual(export_csv_mock.call_count, 1)
+        self.assertEqual(
+            export_csv_mock.call_args.args[0],
+            os.path.join("C:\\virtual-output", "blink_events.csv"),
+        )
+        self.assertEqual(export_csv_mock.call_args.args[1], ["id", "event_time"])
+        self.assertEqual(list(export_csv_mock.call_args.args[2]), [(1, "2024-01-01 12:00:00")])
+
+    def test_export_table_routes_json_exports(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE blink_aggregates (id INTEGER, blink_count INTEGER)")
+        conn.execute("INSERT INTO blink_aggregates (id, blink_count) VALUES (?, ?)", (1, 4))
+
+        with patch("export_blinks.export_rows_to_json") as export_json_mock:
+            export_blinks.export_table(conn, "blink_aggregates", "C:\\virtual-output", "json")
+
+        self.assertEqual(export_json_mock.call_count, 1)
+        self.assertEqual(
+            export_json_mock.call_args.args[0],
+            os.path.join("C:\\virtual-output", "blink_aggregates.json"),
+        )
+        self.assertEqual(export_json_mock.call_args.args[1], ["id", "blink_count"])
+        self.assertEqual(list(export_json_mock.call_args.args[2]), [(1, 4)])
+
     def test_export_rows_to_csv_writes_headers_and_rows(self) -> None:
         handle = mock_open()
         with patch("export_blinks.open", handle):

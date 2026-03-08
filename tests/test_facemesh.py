@@ -61,6 +61,17 @@ class FaceMeshRuntimeTest(unittest.TestCase):
         self.assertEqual(face_mesh_calls[0]["max_num_faces"], 1)
         self.assertFalse(face_mesh_calls[0]["static_image_mode"])
 
+    def test_create_face_mesh_raises_when_mediapipe_has_no_solutions_namespace(self) -> None:
+        logger = logging.getLogger("test.facemesh.missing")
+        logger.addHandler(logging.NullHandler())
+        fake_mp = SimpleNamespace(__version__="0.10.99")
+
+        with patch("blink_app.runtime.facemesh.get_mediapipe", return_value=fake_mp):
+            with self.assertRaises(RuntimeError) as context:
+                create_face_mesh(logger, refine_landmarks=False)
+
+        self.assertIn("does not provide", str(context.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

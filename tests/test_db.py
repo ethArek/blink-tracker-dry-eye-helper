@@ -1,16 +1,51 @@
+import os
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 from blink_app.services.db import (
     count_blinks_in_range,
     fetch_recent_aggregates,
+    format_db_timestamp,
     init_db,
     record_aggregate,
     record_blink_event,
+    resolve_db_path,
 )
 
 
 class DatabaseAggregatesTest(unittest.TestCase):
+    def test_format_db_timestamp_uses_sqlite_friendly_format(self) -> None:
+        value = datetime(2024, 1, 2, 3, 4, 5)
+
+        self.assertEqual(format_db_timestamp(value), "2024-01-02 03:04:05")
+
+    def test_resolve_db_path_uses_explicit_absolute_path(self) -> None:
+        with patch("blink_app.services.db.os.path.abspath", return_value="/tmp/explicit.db"):
+            with patch("blink_app.services.db.os.path.isdir", return_value=False):
+                with patch("blink_app.services.db.os.makedirs") as makedirs_mock:
+                    db_path = resolve_db_path("/ignored", "relative/explicit.db")
+
+        self.assertEqual(db_path, "/tmp/explicit.db")
+        makedirs_mock.assert_called_once_with("/tmp", exist_ok=True)
+
+    def test_resolve_db_path_uses_output_directory_default_filename(self) -> None:
+        output_dir = os.path.join(os.sep, "tmp", "output")
+        with patch("blink_app.services.db.os.path.isdir", return_value=False):
+            with patch("blink_app.services.db.os.makedirs") as makedirs_mock:
+                db_path = resolve_db_path(output_dir, None)
+
+        self.assertEqual(db_path, os.path.join(output_dir, "blinks.db"))
+        makedirs_mock.assert_called_once_with(output_dir, exist_ok=True)
+
+    def test_resolve_db_path_rejects_directory_paths(self) -> None:
+        directory_path = os.path.join(os.sep, "tmp", "output")
+        with patch("blink_app.services.db.os.path.isdir", return_value=True):
+            with self.assertRaises(IsADirectoryError) as context:
+                resolve_db_path(directory_path, directory_path)
+
+        self.assertIn(directory_path, str(context.exception))
+
     def test_record_aggregate_updates_existing_rows(self) -> None:
         db_conn = init_db(":memory:")
         start = datetime(2024, 1, 1, 10, 0, 0)
@@ -54,6 +89,12 @@ class DatabaseAggregatesTest(unittest.TestCase):
         self.assertEqual(rows[0][1], 4)
         self.assertEqual(rows[1][0], "2024-01-01 10:03:00")
         self.assertEqual(rows[2][0], "2024-01-01 10:02:00")
+
+    def test_fetch_recent_aggregates_returns_empty_list_for_non_positive_limit(self) -> None:
+        db_conn = init_db(":memory:")
+
+        self.assertEqual(fetch_recent_aggregates(db_conn, "minute", limit=0), [])
+        self.assertEqual(fetch_recent_aggregates(db_conn, "minute", limit=-5), [])
 
 
 if __name__ == "__main__":
