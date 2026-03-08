@@ -1,7 +1,9 @@
 import logging
+import math
 import os
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -10,13 +12,19 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from blink_app.constants import (
     ALERT_NO_BLINK_SECONDS,
+    BLINK_MAX_EYE_DIFF,
+    BLINK_MAX_RATIO_GAP,
+    CALIBRATION_BLINKS,
+    CALIBRATION_SECONDS,
+    EYE_APERTURE_CORNERS,
+    EYE_APERTURE_GAP_PAIRS,
     FACEMESH_MAX_WIDTH,
     FACEMESH_REFINE_LANDMARKS,
     LEFT_EYE,
     RIGHT_EYE,
 )
 from blink_app.domain.aggregates import AggregateState, update_aggregates
-from blink_app.domain.detection import BlinkState, eye_aspect_ratio
+from blink_app.domain.detection import BlinkState, eye_aperture_ratio
 from blink_app.metadata import APP_NAME
 from blink_app.runtime.camera import CameraProbeResult, open_video_capture, probe_camera
 from blink_app.runtime.dependencies import get_cv2
@@ -24,7 +32,31 @@ from blink_app.runtime.facemesh import create_face_mesh, prepare_facemesh_frame
 from blink_app.services.db import fetch_recent_aggregates
 from blink_app.ui.widgets import ToggleSwitch
 
-EYE_EAR_INDICES = (0, 1, 2, 3, 4, 5)
+
+@dataclass(slots=True)
+class CalibrationSession:
+    enabled: bool
+    required_open_seconds: float
+    blink_target_count: int
+    open_started_at: float | None = None
+    last_open_sample_at: float | None = None
+    stable_open_elapsed: float = 0.0
+    blink_started_at: float | None = None
+    stage: str = "idle"
+    open_samples_left: list[float] | None = None
+    open_samples_right: list[float] | None = None
+    collected_blink_minima: list[float] | None = None
+    blink_active: bool = False
+    current_blink_min_ratio: float = 1.0
+    completed: bool = False
+
+    def __post_init__(self) -> None:
+        if self.open_samples_left is None:
+            self.open_samples_left = []
+        if self.open_samples_right is None:
+            self.open_samples_right = []
+        if self.collected_blink_minima is None:
+            self.collected_blink_minima = []
 
 
 class BlinkWindow(QtWidgets.QMainWindow):
@@ -63,6 +95,7 @@ class BlinkWindow(QtWidgets.QMainWindow):
 
         self._blink_state = BlinkState(last_blink_time=time.time())
         self._aggregate_state = AggregateState(last_stats_time=time.time())
+        self._camera_index_in_use = self._args.camera_index
         self._alerts_enabled = bool(getattr(args, "enable_alerts", False))
         self._alert_after_input: QtWidgets.QDoubleSpinBox | None = None
         self._alert_status_label: QtWidgets.QLabel | None = None
@@ -79,6 +112,7 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._refine_landmarks = bool(
             getattr(args, "refine_landmarks", FACEMESH_REFINE_LANDMARKS)
         )
+        self._calibration = self._build_calibration_session()
 
         self.setWindowTitle(APP_NAME)
         self._video_label = QtWidgets.QLabel(alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -101,6 +135,22 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._init_timer = QtCore.QTimer(self)
         self._init_timer.timeout.connect(self._update_initializing_frame)
         self._init_timer.start(50)
+
+    def _build_calibration_session(self) -> CalibrationSession:
+        calibration_seconds = max(
+            0.0,
+            float(getattr(self._args, "calibration_seconds", CALIBRATION_SECONDS)),
+        )
+        blink_target_count = max(
+            0,
+            int(getattr(self._args, "calibration_blinks", CALIBRATION_BLINKS)),
+        )
+        enabled = calibration_seconds > 0.0
+        return CalibrationSession(
+            enabled=enabled,
+            required_open_seconds=calibration_seconds,
+            blink_target_count=blink_target_count,
+        )
 
     def _apply_theme(self) -> None:
         self.setStyleSheet(
@@ -470,6 +520,243 @@ class BlinkWindow(QtWidgets.QMainWindow):
             for index in eye_indices
         ]
 
+    @staticmethod
+    def _eye_indicator_rect(
+        eye_landmarks: list[tuple[float, float]],
+        frame_width: int,
+        frame_height: int,
+    ) -> tuple[tuple[int, int], tuple[int, int]] | None:
+        if not eye_landmarks:
+            return None
+
+        xs = [point[0] for point in eye_landmarks if math.isfinite(point[0])]
+        ys = [point[1] for point in eye_landmarks if math.isfinite(point[1])]
+        if len(xs) != len(eye_landmarks) or len(ys) != len(eye_landmarks):
+            return None
+
+        min_x = min(xs)
+        max_x = max(xs)
+        min_y = min(ys)
+        max_y = max(ys)
+        span_x = max_x - min_x
+        span_y = max_y - min_y
+        side = max(span_x, span_y) * 1.8
+        side = max(12.0, side)
+
+        center_x = (min_x + max_x) / 2.0
+        center_y = (min_y + max_y) / 2.0
+        half_side = side / 2.0
+
+        left = max(0, int(round(center_x - half_side)))
+        top = max(0, int(round(center_y - half_side)))
+        right = min(frame_width - 1, int(round(center_x + half_side)))
+        bottom = min(frame_height - 1, int(round(center_y + half_side)))
+        if right <= left or bottom <= top:
+            return None
+
+        return (left, top), (right, bottom)
+
+    @staticmethod
+    def _draw_eye_indicator(
+        rgb_frame: np.ndarray,
+        eye_landmarks: list[tuple[float, float]],
+    ) -> None:
+        height, width = rgb_frame.shape[:2]
+        rect = BlinkWindow._eye_indicator_rect(eye_landmarks, width, height)
+        if rect is None:
+            return
+
+        cv2_module = get_cv2()
+        cv2_module.rectangle(
+            rgb_frame,
+            rect[0],
+            rect[1],
+            (72, 255, 140),
+            2,
+        )
+
+    @staticmethod
+    def _percentile(values: list[float], percentile: float) -> float:
+        if not values:
+            raise ValueError("Cannot compute percentile of an empty list.")
+
+        ordered = sorted(values)
+        index = max(0, min(len(ordered) - 1, int(round((len(ordered) - 1) * percentile))))
+        return ordered[index]
+
+    def _draw_status_overlay(
+        self,
+        rgb_frame: np.ndarray,
+        lines: list[str],
+        color: tuple[int, int, int] = (255, 228, 120),
+    ) -> None:
+        if not lines:
+            return
+
+        cv2_module = get_cv2()
+        line_height = 28
+        box_height = 20 + (line_height * len(lines))
+        cv2_module.rectangle(
+            rgb_frame,
+            (12, 12),
+            (min(rgb_frame.shape[1] - 12, 520), 12 + box_height),
+            (24, 32, 48),
+            -1,
+        )
+        for index, line in enumerate(lines):
+            y = 40 + (index * line_height)
+            cv2_module.putText(
+                rgb_frame,
+                line,
+                (24, y),
+                cv2_module.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                color,
+                2,
+                cv2_module.LINE_AA,
+            )
+
+    def _stable_open_sample(
+        self,
+        left_aperture: float,
+        right_aperture: float,
+    ) -> bool:
+        eye_diff = abs(left_aperture - right_aperture)
+        if eye_diff > BLINK_MAX_EYE_DIFF:
+            return False
+
+        minimum_open_aperture = max(
+            0.12,
+            (self._args.ear_threshold * 0.7),
+        )
+        return min(left_aperture, right_aperture) >= minimum_open_aperture
+
+    def _apply_open_eye_calibration(self) -> None:
+        if not self._calibration.open_samples_left or not self._calibration.open_samples_right:
+            return
+
+        left_open = self._percentile(self._calibration.open_samples_left, 0.85)
+        right_open = self._percentile(self._calibration.open_samples_right, 0.85)
+        average_open = (left_open + right_open) / 2.0
+        aperture_threshold = max(0.12, min(0.35, average_open * 0.8))
+        self._blink_state.apply_personal_calibration(
+            left_open,
+            right_open,
+            aperture_threshold=aperture_threshold,
+        )
+        self._app_logger.info(
+            "Open-eye calibration applied (left=%.3f, right=%.3f, threshold=%.3f).",
+            left_open,
+            right_open,
+            aperture_threshold,
+        )
+
+    def _finish_calibration(self, now_ts: float) -> None:
+        blink_minima = self._calibration.collected_blink_minima or []
+        if blink_minima:
+            median_min_ratio = self._percentile(blink_minima, 0.5)
+            close_avg_ratio = max(0.74, min(0.9, median_min_ratio + 0.22))
+            close_max_ratio = max(close_avg_ratio + 0.03, min(0.95, median_min_ratio + 0.28))
+            deep_avg_ratio = max(0.58, min(close_avg_ratio - 0.04, median_min_ratio + 0.08))
+            self._blink_state.apply_personal_calibration(
+                self._blink_state.left_open_reference_aperture or 0.0,
+                self._blink_state.right_open_reference_aperture or 0.0,
+                aperture_threshold=self._blink_state.calibrated_aperture_threshold,
+                close_avg_ratio=close_avg_ratio,
+                close_max_ratio=close_max_ratio,
+                deep_avg_ratio=deep_avg_ratio,
+            )
+            self._app_logger.info(
+                "Blink calibration applied (min_ratio=%.3f, close_ratio=%.3f, deep_ratio=%.3f).",
+                median_min_ratio,
+                close_avg_ratio,
+                deep_avg_ratio,
+            )
+
+        self._blink_state.last_blink_time = now_ts
+        self._calibration.stage = "done"
+        self._calibration.completed = True
+
+    def _handle_calibration(
+        self,
+        left_aperture: float,
+        right_aperture: float,
+        now_ts: float,
+    ) -> list[str]:
+        if not self._calibration.enabled or self._calibration.completed:
+            return []
+
+        if self._calibration.stage == "idle":
+            self._calibration.stage = "open"
+            self._calibration.open_started_at = now_ts
+
+        if self._calibration.stage == "open":
+            if self._stable_open_sample(left_aperture, right_aperture):
+                self._calibration.open_samples_left.append(left_aperture)
+                self._calibration.open_samples_right.append(right_aperture)
+                if self._calibration.last_open_sample_at is not None:
+                    stable_delta = max(0.0, now_ts - self._calibration.last_open_sample_at)
+                    self._calibration.stable_open_elapsed += min(stable_delta, 0.2)
+                self._calibration.last_open_sample_at = now_ts
+            else:
+                self._calibration.last_open_sample_at = None
+
+            collected = len(self._calibration.open_samples_left)
+            if collected >= 12 and self._calibration.stable_open_elapsed >= self._calibration.required_open_seconds:
+                self._apply_open_eye_calibration()
+                if self._calibration.blink_target_count > 0:
+                    self._calibration.stage = "blink"
+                    self._calibration.blink_started_at = now_ts
+                else:
+                    self._finish_calibration(now_ts)
+            else:
+                remaining_seconds = max(
+                    0.0,
+                    self._calibration.required_open_seconds - self._calibration.stable_open_elapsed,
+                )
+                return [
+                    "Calibrating: keep your eyes open",
+                    f"Stable time remaining: {remaining_seconds:.1f}s",
+                ]
+
+        if self._calibration.stage == "blink":
+            ratios = self._blink_state.sample_ratios(left_aperture, right_aperture)
+            if ratios is not None:
+                avg_ratio = ratios[2]
+                ratio_gap = ratios[4]
+                eye_diff = abs(left_aperture - right_aperture)
+                symmetric = eye_diff <= BLINK_MAX_EYE_DIFF and ratio_gap <= BLINK_MAX_RATIO_GAP
+                if self._calibration.blink_active:
+                    self._calibration.current_blink_min_ratio = min(
+                        self._calibration.current_blink_min_ratio,
+                        avg_ratio,
+                    )
+                    if avg_ratio >= 0.96:
+                        if self._calibration.current_blink_min_ratio <= 0.86:
+                            self._calibration.collected_blink_minima.append(
+                                self._calibration.current_blink_min_ratio
+                            )
+                        self._calibration.blink_active = False
+                        self._calibration.current_blink_min_ratio = 1.0
+                elif symmetric and avg_ratio <= 0.88:
+                    self._calibration.blink_active = True
+                    self._calibration.current_blink_min_ratio = avg_ratio
+
+            collected_blinks = len(self._calibration.collected_blink_minima)
+            if collected_blinks >= self._calibration.blink_target_count:
+                self._finish_calibration(now_ts)
+            else:
+                remaining = self._calibration.blink_target_count - collected_blinks
+                return [
+                    "Calibration: blink naturally a few times",
+                    f"Blinks remaining: {remaining}",
+                ]
+
+        if self._calibration.completed:
+            return ["Calibration complete"]
+
+        return []
+
     def _build_waiting_frame(self) -> np.ndarray:
         try:
             waiting_height = int(os.getenv("BLINK_APP_INIT_HEIGHT", "480"))
@@ -514,8 +801,11 @@ class BlinkWindow(QtWidgets.QMainWindow):
             self.close()
             return
 
+        if self._camera_result.camera_index is not None:
+            self._camera_index_in_use = self._camera_result.camera_index
+
         self._cap = open_video_capture(
-            self._args.camera_index,
+            self._camera_index_in_use,
             self._camera_result.backend_id,
             self._args.fps,
         )
@@ -536,10 +826,17 @@ class BlinkWindow(QtWidgets.QMainWindow):
 
         if self._camera_result.backend is not None:
             self._app_logger.info(
-                "Camera initialized (backend=%s, ready=%.2fs).",
+                "Camera initialized (index=%d, backend=%s, ready=%.2fs).",
+                self._camera_index_in_use,
                 self._camera_result.backend,
                 self._camera_result.ready_seconds or 0.0,
             )
+            if self._camera_index_in_use != self._args.camera_index:
+                self._app_logger.warning(
+                    "Requested camera index %d was unavailable. Falling back to index %d.",
+                    self._args.camera_index,
+                    self._camera_index_in_use,
+                )
 
         try:
             self._face_mesh = create_face_mesh(
@@ -607,35 +904,59 @@ class BlinkWindow(QtWidgets.QMainWindow):
         if results.multi_face_landmarks:
             first_face = results.multi_face_landmarks[0]
 
+        overlay_lines: list[str] = []
         if first_face is not None:
             height, width = frame.shape[:2]
             left_landmarks = self._eye_landmarks(first_face, LEFT_EYE, width, height)
             right_landmarks = self._eye_landmarks(first_face, RIGHT_EYE, width, height)
-            left_ear = eye_aspect_ratio(left_landmarks, EYE_EAR_INDICES)
-            right_ear = eye_aspect_ratio(right_landmarks, EYE_EAR_INDICES)
-            ear = (left_ear + right_ear) / 2.0
-            self._blink_state.update(
-                ear,
+            self._draw_eye_indicator(rgb_frame, left_landmarks)
+            self._draw_eye_indicator(rgb_frame, right_landmarks)
+            left_aperture = eye_aperture_ratio(
+                left_landmarks,
+                EYE_APERTURE_CORNERS,
+                EYE_APERTURE_GAP_PAIRS,
+            )
+            right_aperture = eye_aperture_ratio(
+                right_landmarks,
+                EYE_APERTURE_CORNERS,
+                EYE_APERTURE_GAP_PAIRS,
+            )
+            aperture = (left_aperture + right_aperture) / 2.0
+            overlay_lines = self._handle_calibration(left_aperture, right_aperture, now_ts)
+            if self._calibration.completed or not self._calibration.enabled:
+                self._blink_state.update(
+                    aperture,
+                    now_dt,
+                    now_ts,
+                    self._args.ear_threshold,
+                    self._args.ear_consec_frames,
+                    self._blink_logger,
+                    self._db_conn,
+                    left_aperture=left_aperture,
+                    right_aperture=right_aperture,
+                )
+        else:
+            self._blink_state.observe_missing_face(now_ts)
+            if self._calibration.enabled and not self._calibration.completed:
+                if self._calibration.stage == "blink":
+                    overlay_lines = ["Calibration: blink naturally a few times", "Face not detected"]
+                else:
+                    overlay_lines = ["Calibrating: keep your eyes open", "Face not detected"]
+
+        if overlay_lines:
+            self._draw_status_overlay(rgb_frame, overlay_lines)
+
+        if self._calibration.completed or not self._calibration.enabled:
+            update_aggregates(
+                self._args,
+                self._aggregate_state,
                 now_dt,
                 now_ts,
-                self._args.ear_threshold,
-                self._args.ear_consec_frames,
-                self._blink_logger,
+                self._blink_state,
                 self._db_conn,
-                left_ear=left_ear,
-                right_ear=right_ear,
+                self._aggregate_logger,
+                self._output_dir,
             )
-
-        update_aggregates(
-            self._args,
-            self._aggregate_state,
-            now_dt,
-            now_ts,
-            self._blink_state,
-            self._db_conn,
-            self._aggregate_logger,
-            self._output_dir,
-        )
 
         self._update_stats_panel(now_ts)
         self._refresh_minute_table_if_needed()
@@ -746,6 +1067,4 @@ class BlinkWindow(QtWidgets.QMainWindow):
         self._db_conn.close()
         self._app_logger.info("Camera and windows closed. Goodbye!")
         super().closeEvent(event)
-
-
 

@@ -4,11 +4,14 @@ import unittest
 from blink_app.cli import (
     ear_threshold_value,
     non_negative_int,
+    non_negative_float,
     parse_args,
     positive_float,
     positive_int,
 )
 from blink_app.constants import (
+    CALIBRATION_BLINKS,
+    CALIBRATION_SECONDS,
     CAMERA_STARTUP_TIMEOUT_SECONDS,
     FACEMESH_MAX_WIDTH,
     FACEMESH_REFINE_LANDMARKS,
@@ -22,6 +25,8 @@ class CliParseArgsTest(unittest.TestCase):
         self.assertEqual(args.camera_startup_timeout_seconds, CAMERA_STARTUP_TIMEOUT_SECONDS)
         self.assertEqual(args.facemesh_max_width, FACEMESH_MAX_WIDTH)
         self.assertEqual(args.refine_landmarks, FACEMESH_REFINE_LANDMARKS)
+        self.assertEqual(args.calibration_seconds, CALIBRATION_SECONDS)
+        self.assertEqual(args.calibration_blinks, CALIBRATION_BLINKS)
         self.assertFalse(args.enable_alerts)
 
     def test_enable_alerts_flag(self) -> None:
@@ -74,6 +79,11 @@ class CliParseArgsTest(unittest.TestCase):
         args = parse_args(["--facemesh-max-width", "512"])
         self.assertEqual(args.facemesh_max_width, 512)
 
+    def test_custom_calibration_settings_are_applied(self) -> None:
+        args = parse_args(["--calibration-seconds", "1.5", "--calibration-blinks", "3"])
+        self.assertEqual(args.calibration_seconds, 1.5)
+        self.assertEqual(args.calibration_blinks, 3)
+
     def test_non_negative_int_rejects_invalid_values(self) -> None:
         with self.assertRaises(argparse.ArgumentTypeError):
             non_negative_int("abc")
@@ -91,6 +101,12 @@ class CliParseArgsTest(unittest.TestCase):
             positive_float("abc")
         with self.assertRaises(argparse.ArgumentTypeError):
             positive_float("0")
+
+    def test_non_negative_float_rejects_invalid_values(self) -> None:
+        with self.assertRaises(argparse.ArgumentTypeError):
+            non_negative_float("abc")
+        with self.assertRaises(argparse.ArgumentTypeError):
+            non_negative_float("-0.1")
 
     def test_ear_threshold_value_accepts_in_range_value(self) -> None:
         self.assertEqual(ear_threshold_value("0.25"), 0.25)

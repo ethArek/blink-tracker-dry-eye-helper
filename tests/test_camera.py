@@ -49,6 +49,7 @@ class CameraProbeTest(unittest.TestCase):
         self.assertIsNone(result.error)
         self.assertEqual(result.backend, "MSMF")
         self.assertEqual(result.backend_id, fake_cv2.CAP_MSMF)
+        self.assertEqual(result.camera_index, 1)
         self.assertIsNotNone(result.ready_seconds)
         self.assertTrue(dshow_capture.released)
         self.assertTrue(msmf_capture.released)
@@ -66,6 +67,32 @@ class CameraProbeTest(unittest.TestCase):
         self.assertIsNotNone(result.error)
         self.assertIn("first_frame_timeout=1.50s", result.error or "")
         self.assertTrue(capture.released)
+
+    def test_probe_camera_falls_back_to_next_index_when_zero_cannot_open(self) -> None:
+        fake_cv2 = SimpleNamespace(CAP_DSHOW=700)
+        closed_capture = FakeCapture(opened=False)
+        open_capture = FakeCapture(opened=True)
+
+        def open_video_capture(camera_index: int, backend_id: int | None, fps: float | None):
+            self.assertIsNone(fps)
+            if camera_index == 0:
+                return closed_capture
+            if camera_index == 1:
+                if backend_id == fake_cv2.CAP_DSHOW:
+                    return open_capture
+                return FakeCapture(opened=False)
+            return FakeCapture(opened=False)
+
+        with patch("blink_app.runtime.camera.get_cv2", return_value=fake_cv2):
+            with patch("blink_app.runtime.camera.open_video_capture", side_effect=open_video_capture):
+                with patch("blink_app.runtime.camera._wait_for_first_frame", return_value=True):
+                    result = probe_camera(0, None, 1.5)
+
+        self.assertIsNone(result.error)
+        self.assertEqual(result.camera_index, 1)
+        self.assertEqual(result.backend, "DSHOW")
+        self.assertTrue(closed_capture.released)
+        self.assertTrue(open_capture.released)
 
 
 if __name__ == "__main__":
