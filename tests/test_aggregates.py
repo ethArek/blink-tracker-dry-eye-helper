@@ -5,7 +5,7 @@ import unittest
 from datetime import datetime
 from unittest.mock import call, patch
 
-from blink_app.domain.aggregates import AggregateState, update_aggregates
+from blink_app.domain.aggregates import AggregateState, maybe_play_alert, update_aggregates
 from blink_app.domain.detection import BlinkState
 from blink_app.services.db import init_db, record_blink_event
 
@@ -121,8 +121,7 @@ class UpdateAggregatesTest(unittest.TestCase):
         self.assertEqual(state.last_stats_time, now_ts - 0.2)
         write_csv_row_mock.assert_not_called()
 
-    def test_update_aggregates_plays_alert_when_enabled(self) -> None:
-        now_dt = datetime(2024, 1, 2, 12, 34, 56)
+    def test_maybe_play_alert_plays_alert_when_enabled(self) -> None:
         now_ts = 1704198896.0
         state = AggregateState(
             last_stats_time=now_ts - 2.0,
@@ -138,24 +137,52 @@ class UpdateAggregatesTest(unittest.TestCase):
             alert_sound_file=None,
         )
 
-        db_conn = init_db(":memory:")
         with patch("blink_app.domain.aggregates.play_alert_sound") as alert_mock:
-            update_aggregates(
+            maybe_play_alert(
                 args=args,
                 state=state,
-                now_dt=now_dt,
                 now_ts=now_ts,
                 blink_state=blink_state,
-                db_conn=db_conn,
-                aggregate_logger=self.logger,
-                output_dir="ignored",
             )
 
         alert_mock.assert_called_once_with(sound="beep", sound_file=None)
         self.assertEqual(state.last_alert_time, now_ts)
 
-    def test_update_aggregates_clamps_alert_repeat_to_one_second(self) -> None:
-        now_dt = datetime(2024, 1, 2, 12, 34, 56)
+    def test_maybe_play_alert_repeats_after_repeat_interval(self) -> None:
+        first_now_ts = 1704198896.0
+        second_now_ts = first_now_ts + 5.2
+        state = AggregateState(
+            last_stats_time=first_now_ts - 2.0,
+            last_alert_time=first_now_ts - 60.0,
+        )
+        blink_state = BlinkState(last_blink_time=first_now_ts - 20.0)
+        args = argparse.Namespace(
+            csv_output=False,
+            enable_alerts=True,
+            alert_after_seconds=5.0,
+            alert_repeat_seconds=5.0,
+            alert_sound="beep",
+            alert_sound_file=None,
+        )
+
+        with patch("blink_app.domain.aggregates.play_alert_sound") as alert_mock:
+            maybe_play_alert(
+                args=args,
+                state=state,
+                now_ts=first_now_ts,
+                blink_state=blink_state,
+            )
+            maybe_play_alert(
+                args=args,
+                state=state,
+                now_ts=second_now_ts,
+                blink_state=blink_state,
+            )
+
+        self.assertEqual(alert_mock.call_count, 2)
+        self.assertEqual(state.last_alert_time, second_now_ts)
+
+    def test_maybe_play_alert_clamps_alert_repeat_to_one_second(self) -> None:
         now_ts = 1704198896.0
         state = AggregateState(
             last_stats_time=now_ts - 2.0,
@@ -171,17 +198,12 @@ class UpdateAggregatesTest(unittest.TestCase):
             alert_sound_file=None,
         )
 
-        db_conn = init_db(":memory:")
         with patch("blink_app.domain.aggregates.play_alert_sound") as alert_mock:
-            update_aggregates(
+            maybe_play_alert(
                 args=args,
                 state=state,
-                now_dt=now_dt,
                 now_ts=now_ts,
                 blink_state=blink_state,
-                db_conn=db_conn,
-                aggregate_logger=self.logger,
-                output_dir="ignored",
             )
 
         alert_mock.assert_not_called()

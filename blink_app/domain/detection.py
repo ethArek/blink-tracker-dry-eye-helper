@@ -124,7 +124,6 @@ class BlinkState:
     reopen_avg_ratio: float = BLINK_REOPEN_AVG_RATIO
     reopen_max_ratio: float = BLINK_REOPEN_MAX_RATIO
     reopen_ratio_delta: float = BLINK_REOPEN_RATIO_DELTA
-    calibrated_aperture_threshold: float | None = None
 
     @staticmethod
     def _is_valid_sample(*values: float) -> bool:
@@ -147,12 +146,6 @@ class BlinkState:
             and self.right_open_reference_aperture is not None
         )
 
-    def aperture_threshold(self, default_threshold: float) -> float:
-        if self.calibrated_aperture_threshold is None:
-            return default_threshold
-
-        return self.calibrated_aperture_threshold
-
     def _reset_closure(self) -> None:
         self.phase = BLINK_PHASE_OPEN
         self.frame_counter = 0
@@ -173,7 +166,6 @@ class BlinkState:
         if reset_baseline:
             self.left_open_reference_aperture = None
             self.right_open_reference_aperture = None
-            self.calibrated_aperture_threshold = None
 
     def observe_missing_face(self, now_ts: float) -> None:
         if self.last_valid_sample_time is None:
@@ -231,57 +223,6 @@ class BlinkState:
         max_ratio = max(left_ratio, right_ratio)
         ratio_gap = abs(left_ratio - right_ratio)
         return left_ratio, right_ratio, avg_ratio, max_ratio, ratio_gap
-
-    def sample_ratios(
-        self,
-        left_aperture: float,
-        right_aperture: float,
-    ) -> tuple[float, float, float, float, float] | None:
-        if (
-            not self._references_ready()
-            or not self._is_valid_sample(left_aperture, right_aperture)
-            or self.left_open_reference_aperture is None
-            or self.right_open_reference_aperture is None
-            or self.left_open_reference_aperture <= 1e-9
-            or self.right_open_reference_aperture <= 1e-9
-        ):
-            return None
-
-        left_ratio = left_aperture / self.left_open_reference_aperture
-        right_ratio = right_aperture / self.right_open_reference_aperture
-        avg_ratio = (left_ratio + right_ratio) / 2.0
-        max_ratio = max(left_ratio, right_ratio)
-        ratio_gap = abs(left_ratio - right_ratio)
-        return left_ratio, right_ratio, avg_ratio, max_ratio, ratio_gap
-
-    def apply_personal_calibration(
-        self,
-        left_open_aperture: float,
-        right_open_aperture: float,
-        aperture_threshold: float | None = None,
-        close_avg_ratio: float | None = None,
-        close_max_ratio: float | None = None,
-        deep_avg_ratio: float | None = None,
-    ) -> None:
-        if not self._is_valid_sample(left_open_aperture, right_open_aperture):
-            return
-
-        self.left_open_reference_aperture = left_open_aperture
-        self.right_open_reference_aperture = right_open_aperture
-        self.smoothed_left_aperture = left_open_aperture
-        self.smoothed_right_aperture = right_open_aperture
-        self.previous_avg_aperture = (left_open_aperture + right_open_aperture) / 2.0
-        self.previous_avg_ratio = 1.0
-        self._reset_closure()
-
-        if aperture_threshold is not None and math.isfinite(aperture_threshold):
-            self.calibrated_aperture_threshold = max(0.01, aperture_threshold)
-        if close_avg_ratio is not None and math.isfinite(close_avg_ratio):
-            self.close_avg_ratio = close_avg_ratio
-        if close_max_ratio is not None and math.isfinite(close_max_ratio):
-            self.close_max_ratio = close_max_ratio
-        if deep_avg_ratio is not None and math.isfinite(deep_avg_ratio):
-            self.deep_avg_ratio = deep_avg_ratio
 
     def _is_stable_open_sample(
         self,
@@ -589,7 +530,7 @@ class BlinkState:
             left_eye_aperture,
             right_eye_aperture,
         )
-        aperture_threshold = self.aperture_threshold(ear_threshold)
+        aperture_threshold = ear_threshold
         avg_aperture = (left_eye_aperture + right_eye_aperture) / 2.0
         max_aperture = max(left_eye_aperture, right_eye_aperture)
         eye_diff = abs(left_eye_aperture - right_eye_aperture)

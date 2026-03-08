@@ -4,8 +4,6 @@ from blink_app.constants import (
     ALERT_NO_BLINK_SECONDS,
     ALERT_REPEAT_SECONDS,
     ALERT_SOUND,
-    CALIBRATION_BLINKS,
-    CALIBRATION_SECONDS,
     CAMERA_STARTUP_TIMEOUT_SECONDS,
     EAR_CONSEC_FRAMES,
     EAR_THRESHOLD,
@@ -42,16 +40,6 @@ def positive_float(value: str) -> float:
         raise argparse.ArgumentTypeError(f"Invalid float value: {value}") from exc
     if fvalue <= 0:
         raise argparse.ArgumentTypeError("Value must be a positive number.")
-    return fvalue
-
-
-def non_negative_float(value: str) -> float:
-    try:
-        fvalue = float(value)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"Invalid float value: {value}") from exc
-    if fvalue < 0:
-        raise argparse.ArgumentTypeError("Value must be zero or a positive number.")
     return fvalue
 
 
@@ -126,24 +114,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--csv-output",
         action="store_true",
         help="Enable CSV export for blink metrics (default: disabled).",
-    )
-    parser.add_argument(
-        "--calibration-seconds",
-        type=non_negative_float,
-        default=CALIBRATION_SECONDS,
-        help=(
-            "Seconds of startup open-eye calibration. Set to 0 to disable "
-            f"(default: {CALIBRATION_SECONDS})."
-        ),
-    )
-    parser.add_argument(
-        "--calibration-blinks",
-        type=non_negative_int,
-        default=CALIBRATION_BLINKS,
-        help=(
-            "Optional number of intentional blinks to collect after open-eye calibration "
-            f"(default: {CALIBRATION_BLINKS})."
-        ),
     )
     parser.add_argument(
         "--db-path",
