@@ -48,6 +48,43 @@ Run the script that matches your operating system:
 ./scripts/release/build_linux_appimage.sh
 ```
 
+## Windows installer metadata
+
+`scripts/release/build_windows.ps1` now reads the app version from
+`blink_app.__version__` and passes publisher/support/update metadata into Inno
+Setup so the packaged EXE and `BlinkTrackerSetup.exe` carry real version
+information instead of stale hardcoded values.
+
+Optional metadata environment variables:
+
+- `BLINK_TRACKER_PUBLISHER`
+- `BLINK_TRACKER_PUBLISHER_URL`
+- `BLINK_TRACKER_SUPPORT_URL`
+- `BLINK_TRACKER_UPDATES_URL`
+- `BLINK_TRACKER_FILE_DESCRIPTION`
+- `BLINK_TRACKER_COPYRIGHT`
+
+If those are unset, the Windows build script falls back to the Git remote where
+possible.
+
+### Windows code signing
+
+Version metadata improves file properties, but Windows will still show
+`Unknown publisher` for unsigned binaries. To sign the packaged EXE and
+`BlinkTrackerSetup.exe`, configure one of:
+
+- `BLINK_TRACKER_SIGN_CERT_SHA1`
+- `BLINK_TRACKER_SIGN_PFX_PATH`
+
+Optional signing variables:
+
+- `BLINK_TRACKER_SIGN_PFX_PASSWORD`
+- `BLINK_TRACKER_SIGNTOOL_PATH`
+- `BLINK_TRACKER_TIMESTAMP_URL`
+
+If signing is not configured, the script emits a warning so the unsigned state
+is explicit.
+
 ## Windows icon note
 
 Windows executables require an `.ico` file for `--icon`. If a PNG exists at

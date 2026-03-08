@@ -1,13 +1,18 @@
 import argparse
 
-from blink_app import __version__
 from blink_app.constants import (
     ALERT_NO_BLINK_SECONDS,
     ALERT_REPEAT_SECONDS,
     ALERT_SOUND,
+    CALIBRATION_BLINKS,
+    CALIBRATION_SECONDS,
+    CAMERA_STARTUP_TIMEOUT_SECONDS,
     EAR_CONSEC_FRAMES,
     EAR_THRESHOLD,
+    FACEMESH_MAX_WIDTH,
+    FACEMESH_REFINE_LANDMARKS,
 )
+from blink_app.metadata import APP_VERSION_LABEL
 
 
 def non_negative_int(value: str) -> int:
@@ -40,6 +45,16 @@ def positive_float(value: str) -> float:
     return fvalue
 
 
+def non_negative_float(value: str) -> float:
+    try:
+        fvalue = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid float value: {value}") from exc
+    if fvalue < 0:
+        raise argparse.ArgumentTypeError("Value must be zero or a positive number.")
+    return fvalue
+
+
 def ear_threshold_value(value: str) -> float:
     fvalue = positive_float(value)
     if fvalue > 1.0:
@@ -52,7 +67,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"Blink Tracker {__version__}",
+        version=APP_VERSION_LABEL,
     )
     parser.add_argument(
         "--camera-index",
@@ -84,9 +99,51 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Requested capture FPS (default: camera default).",
     )
     parser.add_argument(
+        "--camera-startup-timeout-seconds",
+        type=positive_float,
+        default=CAMERA_STARTUP_TIMEOUT_SECONDS,
+        help=(
+            "Seconds to wait for first camera frame per backend during startup "
+            f"(default: {CAMERA_STARTUP_TIMEOUT_SECONDS})."
+        ),
+    )
+    parser.add_argument(
+        "--facemesh-max-width",
+        type=positive_int,
+        default=FACEMESH_MAX_WIDTH,
+        help=(
+            "Maximum RGB frame width passed into MediaPipe FaceMesh. Lower values improve speed "
+            f"(default: {FACEMESH_MAX_WIDTH})."
+        ),
+    )
+    parser.add_argument(
+        "--refine-landmarks",
+        action="store_true",
+        dest="refine_landmarks",
+        help="Enable MediaPipe landmark refinement for higher detail at a higher CPU cost.",
+    )
+    parser.add_argument(
         "--csv-output",
         action="store_true",
         help="Enable CSV export for blink metrics (default: disabled).",
+    )
+    parser.add_argument(
+        "--calibration-seconds",
+        type=non_negative_float,
+        default=CALIBRATION_SECONDS,
+        help=(
+            "Seconds of startup open-eye calibration. Set to 0 to disable "
+            f"(default: {CALIBRATION_SECONDS})."
+        ),
+    )
+    parser.add_argument(
+        "--calibration-blinks",
+        type=non_negative_int,
+        default=CALIBRATION_BLINKS,
+        help=(
+            "Optional number of intentional blinks to collect after open-eye calibration "
+            f"(default: {CALIBRATION_BLINKS})."
+        ),
     )
     parser.add_argument(
         "--db-path",
@@ -154,5 +211,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         dest="enable_alerts",
         help="Disable audio alerts when no blink is detected.",
     )
-    parser.set_defaults(enable_alerts=False)
+    parser.set_defaults(
+        enable_alerts=False,
+        refine_landmarks=FACEMESH_REFINE_LANDMARKS,
+    )
     return parser.parse_args(argv)

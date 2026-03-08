@@ -1,9 +1,10 @@
 # Blink Tracker
 
 Blink Tracker is a webcam-based blink monitor that uses MediaPipe FaceMesh
-to estimate eye aspect ratio (EAR) and track blink frequency over time. It provides a
-live preview with session stats, writes structured logs, stores data in SQLite, and can
-export aggregates for analysis.
+to estimate a multi-gap eyelid aperture signal and track blink frequency over time.
+It provides a live preview with session stats, runs a short startup calibration by
+default, writes structured logs, stores data in SQLite, and can export aggregates for
+analysis.
 
 ## Requirements
 
@@ -27,7 +28,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run with defaults (same as the original behavior):
+Run with defaults:
 
 ```bash
 python main.py
@@ -51,6 +52,18 @@ Enable alerts (off by default) and customize the reminder timing:
 python main.py --enable-alerts --alert-after-seconds 25 --alert-repeat-seconds 25
 ```
 
+If you need more eyelid detail, enable MediaPipe refinement explicitly:
+
+```bash
+python main.py --refine-landmarks
+```
+
+Use a longer startup calibration or collect a couple of intentional blinks:
+
+```bash
+python main.py --calibration-seconds 4 --calibration-blinks 2
+```
+
 Show all options:
 
 ```bash
@@ -66,6 +79,8 @@ python main.py --version
 ## What you will see
 
 - A live camera preview with a tabbed stats panel on the right (Stats + Per-minute).
+- A short startup calibration overlay that asks you to keep your eyes open before
+  blink counting begins.
 - Session blink count, "last blink" time, per-minute/hour aggregates, and today's total.
 - An Alerts card with a toggle and live "After" control for reminder timing.
 - A Per-minute table showing the most recent minute aggregates (latest first).
@@ -74,11 +89,15 @@ Press **ESC** or close the window to exit (Ctrl+C also works in the terminal).
 
 ## Configuration and tuning
 
-- **`--ear-threshold`**: Lower values make blinks harder to trigger; higher values
-  make blinks more sensitive. Valid range is `(0.0, 1.0]`. If blinks are missed,
-  raise it slightly.
+- **`--ear-threshold`**: Compatibility name for the normalized eye-aperture threshold.
+  Lower values make blinks harder to trigger; higher values make blinks more sensitive.
+  Valid range is `(0.0, 1.0]`.
 - **`--ear-consec-frames`**: Increase to avoid false positives, decrease for quicker
   detection if you blink rapidly. Must be a positive integer.
+- **`--calibration-seconds`**: Seconds of stable open-eye calibration at startup.
+  Default is `3.0`. Set to `0` to disable startup calibration entirely.
+- **`--calibration-blinks`**: Optional number of intentional blinks to collect after
+  the open-eye calibration. Default is `0`.
 - **`--enable-alerts`**: Turn on audio alerts (default: off). You can also toggle
   alerts live in the app.
 - **`--disable-alerts`**: Force alerts off (mutually exclusive with `--enable-alerts`).
@@ -93,6 +112,26 @@ Press **ESC** or close the window to exit (Ctrl+C also works in the terminal).
   camera default.
 - **`--camera-index`**: If you have multiple cameras, use indices 0, 1, 2, etc. to
   find the correct device.
+- **`--camera-startup-timeout-seconds`**: Maximum time to wait for the first frame
+  from each camera backend during startup. Raise it if your camera needs extra
+  warm-up time.
+- **`--facemesh-max-width`**: Maximum RGB frame width passed into MediaPipe FaceMesh.
+  Default is `960`. Frames at or below that width are processed as-is; larger frames
+  are downscaled proportionally before FaceMesh runs.
+- **`--refine-landmarks`**: Enables MediaPipe's refined eye/iris landmarks for higher
+  detail at a higher CPU cost. This is off by default to keep runtime overhead down.
+
+### Performance notes
+
+- Blink Tracker processes only the first detected face.
+- The app computes a multi-gap eyelid aperture signal from the eye landmarks it needs
+  instead of rebuilding the full landmark list each frame.
+- The default `--facemesh-max-width 960` is conservative: it reduces work on 1080p+
+  cameras without aggressively shrinking eye detail.
+- Lowering `--facemesh-max-width` can improve speed, but if you push it too low you
+  may get noisier eyelid landmarks and worse blink detection.
+- `--refine-landmarks` can improve eye detail, but it is slower. Use it when accuracy
+  matters more than CPU usage.
 
 ### Advanced (optional)
 
@@ -102,6 +141,8 @@ Press **ESC** or close the window to exit (Ctrl+C also works in the terminal).
 ## Outputs
 
 All outputs are written under `--output-dir` (default: current directory).
+If that directory is not writable, Blink Tracker automatically falls back to a
+user-writable app data directory (on Windows: `%LOCALAPPDATA%\BlinkTracker`).
 
 ### Logs
 
@@ -196,11 +237,22 @@ threshold checks on every push/PR.
 ## Troubleshooting
 
 - **Camera will not open**: Try a different `--camera-index`, close other apps using
-  the camera, or ensure the OS has granted camera permissions.
+  the camera, ensure the OS has granted camera permissions, or increase
+  `--camera-startup-timeout-seconds`.
 - **Black window or no frames**: Some cameras need a few seconds to warm up. If it
   persists, try reducing `--fps` or switching cameras.
-- **Missed or false blinks**: Adjust `--ear-threshold` and `--ear-consec-frames` until
-  the stats panel matches your actual blink rate.
+- **Slow performance**: Leave `--refine-landmarks` off unless you need it. If your
+  camera runs above 960 px wide, lowering `--facemesh-max-width` can reduce CPU use,
+  but raise it again if blink quality drops.
+- **`FaceMesh initialization failed: module 'mediapipe' has no attribute 'solutions'`**:
+  Your environment has a MediaPipe release that removed `mp.solutions`. Install the
+  pinned dependency set (`pip install -r requirements.txt`), which currently uses
+  `mediapipe==0.10.21`.
+- **Missed or false blinks**: Let the startup calibration finish before judging the
+  blink counter. If needed, try `--calibration-blinks 2`, then adjust
+  `--ear-threshold` and `--ear-consec-frames`. If you also lowered
+  `--facemesh-max-width`, try raising it back toward `960` or enabling
+  `--refine-landmarks`.
 - **No audio alerts**: Make sure alerts are enabled (`--enable-alerts` or the UI
   toggle), then install a system audio player (e.g., `paplay`/`aplay` on Linux, or
   ensure audio output is enabled).
